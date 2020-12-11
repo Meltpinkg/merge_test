@@ -49,9 +49,14 @@ class Record(object):
 
 class ListNode(object):
     def __init__(self, id, record, pre=None, next=None):
-        self.variant_list = [record]
-        self.start = record.start
-        self.end = record.end
+        if record == None:
+            self.variant_list = []
+            self.start = -1
+            self.end = -1
+        else:
+            self.variant_list = [record]
+            self.start = record.start
+            self.end = record.end
         self.vis = set()
         self.vis.add(id)
         self.pre = pre
@@ -61,10 +66,10 @@ class ListNode(object):
         self.vis.add(id)
     def to_string(self):
         string = 'List size = ' + str(len(self.variant_list)) + ', '
-        for rec in variant_list:
+        for rec in self.variant_list:
             string += rec.to_string() + '; '
         return string
-        
+
 
 '''
     cur, input -> Record
@@ -86,19 +91,15 @@ def check_is_same(cur, input, id, vis, max_dist, max_inspro):
     head, node -> ListNode
     向head后某处插入node
 '''
-def insert_node(head, node):
+def insert_node(head, id, record):
+    node = ListNode(id, record)
     if head.start > record.start:
-        if head.pre == null:
-            node.next = head
-            head.pre = node
-            return node
-        else:
-            node.next = head
-            node.pre = head.pre
-            head.pre.next = node
-            head.pre = node
-            return node
-    while head.next != null:
+        node.next = head
+        node.pre = head.pre
+        head.pre.next = node
+        head.pre = node
+        return node
+    while head.next != None:
         if head.next.start > record.start:
             node.next = head.next
             node.pre = head
@@ -117,37 +118,41 @@ def insert_node(head, node):
     在head附近某处添加(add/insert) ListNode(id, record)
 '''
 def add_node(head, id, record, max_dist, max_inspro):
-    if head == null:
-        head = ListNode(id, record)
-        return head
+    if head.start == -1:
+        node = ListNode(id, record)
+        node.pre = head
+        head.next = node
+        return node
     cur = head
-    while cur != null:
+    while cur != None:
         if check_is_same(cur.variant_list[0], record, id, cur.vis, max_dist, max_inspro):
             cur.add(id, record)
             return cur
         if cur.start - record.start > 2 * max_dist:  # cannot merge
             break            
         cur = cur.next
+        #print('next')
     cur = head.pre
-    while cur != null:
-        if check_is_same(cur, record):
+    while cur.start != -1:
+        if check_is_same(cur.variant_list[0], record, id, cur.vis, max_dist, max_inspro):
             cur.add(id, record)
             return cur
         if record.start - cur.start > 2 * max_dist:
             break
         cur = cur.pre
-    return insert_node(cur, ListNode(id, record))
+        #print('pre')
+    cur = cur.next
+    return insert_node(cur, id, record)
 
 
 def print_list(head):
     print('Linked List:')
-    while head != null:
-        print(ListNode.to_string())
+    while head != None:
+        print(head.to_string())
+        head = head.next
 
 
 
 def init_linkedlist():
     vcf_filenames, vcfgz_filenames, chrom_set, chrom_cnt, contiginfo = pre_vcf(argv[0])
 
-
-if __name__ == '__main__':

@@ -1,5 +1,6 @@
 from cuteSV_AVLTree import TreeNode, AVLTree, Record
-from cuteSV_calculation import cal_center, cal_ci, pre_vcf
+from cuteSV_calculation import cal_center, cal_ci
+from cuteSV_linkedList import add_node, print_list, ListNode
 from pysam import VariantFile
 from multiprocessing import Pool, Manager
 import os
@@ -58,29 +59,15 @@ def solve_chrom(vcf_filenames, chrom):
 ##FORMAT=<ID=AAL,Number=1,Type=String,Description="Alternative allele sequence reported from input.">
 ##FORMAT=<ID=CO,Number=1,Type=String,Description="Coordinates">
 '''
-def output_chrom(tree, input_cnt, chrom):
+def output_chrom(head, input_cnt, chrom):
     file = open('chrom_ans/' + chrom + '_ans.vcf', 'w')
-    node_list = []
-    vis_list = []
-    tree.inorder(tree.root, node_list, vis_list)
-    '''
-    print(len(node_list))
-    output_tmp = open('chrom_temp/' + chrom + '_tmp.vcf', 'w')
-    for idx in range(len(node_list)):
-        for node in node_list[idx]:
-            output_tmp.write(node.to_string())
-            output_tmp.write('\t')
-        output_tmp.write(str(vis_list) + '\n')
-    output_tmp.close()
-    '''
     #print('start writing to file ' + chrom)
-    for idx in range(len(node_list)):  #, node[1] -> set(vis)
-        node = node_list[idx]  #  node -> list(Record)
-        can_idx, cipos, ciend = cal_center(node)
-        can_record = node[can_idx]
+    while head != None:
+        can_idx, cipos, ciend = cal_center(head.variant_list)
+        can_record = head.variant_list[can_idx]
         supp_id = ''
         for i in range(input_cnt):
-            if i in vis_list[idx]:
+            if i in head.vis:
                 supp_id += '1'
             else:
                 supp_id += '0'
@@ -92,7 +79,7 @@ def output_chrom(tree, input_cnt, chrom):
             sv_len = can_record.end
             sv_end = can_record.start - 1
             info_list = "SUPP={SUPP};SUPP_ID={SUPP_ID};SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CILEN={CILEN}".format(
-                    SUPP = len(node),
+                    SUPP = len(head.variant_list),
                     SUPP_ID = supp_id,
                     SVTYPE = can_record.type, 
                     SVLEN = sv_len, 
@@ -105,7 +92,7 @@ def output_chrom(tree, input_cnt, chrom):
             sv_len = can_record.start - can_record.end - 1
             sv_end = can_record.end
             info_list = "SUPP={SUPP};SUPP_ID={SUPP_ID};SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CIEND={CIEND}".format(
-                    SUPP = len(node),
+                    SUPP = len(head.variant_list),
                     SUPP_ID = supp_id,
                     SVTYPE = can_record.type, 
                     SVLEN = sv_len, 
@@ -118,7 +105,7 @@ def output_chrom(tree, input_cnt, chrom):
             sv_len = can_record.end - can_record.start + 1
             sv_end = can_record.end
             info_list = "SUPP={SUPP};SUPP_ID={SUPP_ID};SVTYPE={SVTYPE};SVLEN={SVLEN};END={END}".format(
-                    SUPP = len(node),
+                    SUPP = len(head.variant_list),
                     SUPP_ID = supp_id,
                     SVTYPE = can_record.type, 
                     SVLEN = sv_len, 
@@ -129,7 +116,7 @@ def output_chrom(tree, input_cnt, chrom):
                 info_list.append(';STRAND=' + can_record.strand)
         elif can_record.type == 'BND':
             info_list = "SUPP={SUPP};SUPP_ID={SUPP_ID};SVTYPE={SVTYPE};CHR2={CHR2};END={END}".format(
-                    SUPP = len(node),
+                    SUPP = len(head.variant_list),
                     SUPP_ID = supp_id,
                     SVTYPE = can_record.type, 
                     CHR2 = can_record.chrom2, 
@@ -146,11 +133,7 @@ def output_chrom(tree, input_cnt, chrom):
             INFO = info_list, 
             FORMAT = "ID:RAL:AAL",
             ))
-        for i in range(input_cnt):
-            if i in vis_list[idx]:
-                supp_id += '1'
-            else:
-                supp_id += '0'
+        head = head.next
     file.close()
 
 
@@ -194,51 +177,94 @@ def generate_header(filename, contiginfo):
     #file.write("##CommandLine=\"cuteSV %s\"\n"%(" ".join(argv)))
 
 
+def pre_vcf(filenames):
+    '''
+    vcf_filenames = []
+    vcfgz_filenames = []
+    os.system('rm -r temp')
+    os.mkdir('temp')
+    start_time = time.time()
+    with open(filenames, 'r') as f:
+        for line in f:
+            line = line.strip()
+            vcf_filenames.append(line)
+            if line[-2: 0] != 'gz':
+                cmd = 'bgzip -c ' + line + ' > temp/' + line + '.gz'
+                os.system(cmd)
+            line = 'temp/' + line + '.gz'
+            os.system('tabix -p vcf ' + line)
+            vcfgz_filenames.append(line)
+    '''
+    vcf_filenames = ['cuteSV1.vcf', 'cuteSV2.vcf', 'cuteSV3.vcf']
+    vcfgz_filenames = ['temp/cuteSV1.vcf.gz', 'temp/cuteSV2.vcf.gz', 'temp/cuteSV3.vcf.gz']
+    chrom_set = set()
+    contiginfo = set()
+    for vcf_filename in vcf_filenames:  # 默认header的config中存放了所有chrom信息
+        vcf_reader = VariantFile(vcf_filename, 'r')
+        for contig in vcf_reader.header.contigs:
+            chrom_set.add(contig)  # contig 染色体号
+    chrom_cnt = []  # 1:2989, 2:3009, 10:1956, X:1094
+    '''
+    base_cmd1 = 'grep -v \'#\' ' + vcf_filenames[0] + ' | awk -F \'\\t\' \'{print $1}\' | grep -x \''
+    base_cmd2 = '\' | wc -l'
+    for chrom in chrom_set:
+        fd = os.popen(base_cmd1 + chrom + base_cmd2)
+        mi = fd.read().strip()
+        chrom_cnt.append([chrom, int(mi)])
+    chrom_cnt.sort(key = lambda x:x[1], reverse = True)
+    '''
+    for chrom in chrom_set:
+        chrom_cnt.append([chrom])
+    print(chrom_cnt)
+    return vcf_filenames, vcfgz_filenames, chrom_set, chrom_cnt, contiginfo
+
+
 def ll_solve_chrom(vcf_filenames, chrom, max_dist, max_inspro):
-    cur_node = null
-    list_head = cur_node
+    #print('start ' + chrom)
+    start_time = time.time()
+    list_head = ListNode(-1, None)
+    cur_node = list_head
     for i in range(len(vcf_filenames)):
         idx = 0
         vcf_reader = VariantFile(vcf_filenames[i], 'r')
         for record in vcf_reader.fetch(chrom):
-            print(record)
+            #print(record,end='')
             idx += 1
             cur_node = add_node(cur_node, i, Record(record, i), max_dist, max_inspro)
-    while list_head.pre != null:
-        list_head = list_head.pre
-    print_list(list_head)
+            #print(cur_node.to_string())
+            #print()
+    #print(cur_node.to_string())
+    #print_list(list_head.next)
+    output_chrom(list_head.next, len(vcf_filenames), chrom)
+    print('finish ' + chrom + ' in ' + str(time.time() - start_time))
 
 
 def main(argv):
     start_time = time.time()
-    print(start_time)
     os.system('rm -r chrom_ans')
     os.mkdir('chrom_ans')
-    os.system('rm -r chrom_temp')
-    os.mkdir('chrom_temp')
+    max_dist = 1000
+    max_inspro = 0.7
 
     vcf_filenames, vcfgz_filenames, chrom_set, chrom_cnt, contiginfo = pre_vcf(argv[0])
-    print(vcf_filenames)
-    print(chrom_set)
-    print(chrom_cnt)
-    print('x')
-    print(time.time() - start_time)
-    ll_solve_chrom(vcfgz_filenames, '1')
+    '''
+    for chrom in chrom_set:
+        ll_solve_chrom(vcfgz_filenames, chrom, 1000, 0.7)
+        print(chrom + '\t' + str(time.time() - start_time))
     '''
     pool = Pool(processes = int(argv[2]))
     for iter in chrom_cnt:
         # multi processes
-        print(iter[0])
+        # print(iter[0])
         #if iter[1] == 0:
         #    continue
-        pool.apply_async(solve_chrom, args=(vcfgz_filenames, iter[0])) 
-    
+        pool.apply_async(ll_solve_chrom, args=(vcfgz_filenames, iter[0], max_dist, max_inspro)) 
     pool.close()
     pool.join()
     print('xx')
     print(time.time() - start_time)
     chrom_cnt.sort(key = lambda x:x[0], reverse = False)
-    generate_header(argv[1])
+    generate_header(argv[1], contiginfo)
     for i in chrom_cnt:
         #if i[1] == 0:
         #    break
@@ -246,7 +272,7 @@ def main(argv):
     print('finish merge in ' + str(time.time() - start_time) + 'seconds')
 
     #os.system('rm -r temp')
-    '''
+    #'''
     
 
 if __name__ == '__main__':
