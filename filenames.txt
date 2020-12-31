@@ -1,3 +1,0 @@
-cuteSV1.vcf
-cuteSV2.vcf
-cuteSV3.vcf
