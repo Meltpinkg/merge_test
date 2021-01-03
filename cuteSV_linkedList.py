@@ -38,9 +38,16 @@ class Record(object):
                 self.strand = record.info['STRANDS']
             else:
                 self.strand = '.'
+        if isinstance(self.strand, list) or isinstance(self.strand, tuple):
+            self.strand = str(self.strand[0])
         self.ref = record.ref
         self.alt = record.alts  # tuple
         self.qual = record.qual  # NoneType
+        if 'GT' in record.format:
+            if record.samples[0]['GT'] == None or record.samples[0]['GT'][0] == None:
+                self.gt = './.'
+            else:
+                self.gt = str(record.samples[0]['GT'][0]) + '/' + str(record.samples[0]['GT'][1])
 
     def to_string(self):
         return self.name + ', start: ' + str(self.start) + ', end: ' + str(self.end) + ', strand: ' + self.strand
@@ -60,7 +67,7 @@ class ListNode(object):
         self.pre = pre
         self.next = next
     def add(self, id, record):
-        self.variant_list[id] = record
+        self.variant_dict[id] = record
         #self.vis.add(id)
     def to_string(self):
         string = 'List size = ' + str(len(self.variant_list)) + ', '
@@ -101,19 +108,20 @@ def check_is_same(cur, input, max_dist, max_inspro):
 
 
 '''
-    head, node -> ListNode
-    向head后某处插入node
+    head -> ListNode
+    record -> Record
+    向head后某处插入node(record)
 '''
 def insert_node(head, id, record):
     node = ListNode(id, record)
-    if head.start > record.start:
+    if head.represent.start > record.start:
         node.next = head
         node.pre = head.pre
         head.pre.next = node
         head.pre = node
         return node
     while head.next != None:
-        if head.next.start > record.start:
+        if head.next.represent.start > record.start:
             node.next = head.next
             node.pre = head
             head.next.pre = node
@@ -131,7 +139,7 @@ def insert_node(head, id, record):
     在head附近某处添加(add/insert) ListNode(id, record)
 '''
 def add_node(head, id, record, max_dist, max_inspro):
-    if head.start == -1:
+    if head.represent == None:
         node = ListNode(id, record)
         node.pre = head
         head.next = node
@@ -141,16 +149,16 @@ def add_node(head, id, record, max_dist, max_inspro):
         if check_is_same(cur.represent, record, max_dist, max_inspro) and id not in cur.variant_dict:
             cur.add(id, record)
             return cur
-        if cur.start - record.start > 2 * max_dist:  # cannot merge
+        if cur.represent.start - record.start > 2 * max_dist:  # cannot merge
             break
         cur = cur.next
         #print('next')
     cur = head.pre
-    while cur.start != -1:
+    while cur.represent != None:
         if check_is_same(cur.represent, record, max_dist, max_inspro) and id not in cur.variant_dict:
             cur.add(id, record)
             return cur
-        if record.start - cur.start > 2 * max_dist:
+        if record.start - cur.represent.start > 2 * max_dist:
             break
         cur = cur.pre
         #print('pre')

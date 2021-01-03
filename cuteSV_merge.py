@@ -1,11 +1,12 @@
 from cuteSV_calculation import cal_center, cal_ci
-from cuteSV_linkedList import add_node, print_list, ListNode
+from cuteSV_linkedList import add_node, print_list, ListNode, Record
+from cuteSV_output import output_result
 from pysam import VariantFile
 from multiprocessing import Pool, Manager
 import os
-import vcf
 import sys
 import time
+import argparse
 
 
 def test():
@@ -78,17 +79,26 @@ def pre_vcf(filenames, threads, work_dir):
             #os.system('tabix -p vcf ' + line)
             else:
                 vcfgz_filenames.append(line)
-    print(vcfgz_filenames)
+    #print(vcfgz_filenames)
     process_pool.close()
     process_pool.join()
-    #vcf_filenames = ['cuteSV1.vcf', 'cuteSV2.vcf', 'cuteSV3.vcf']
-    #vcfgz_filenames = ['temp/cuteSV1.vcf.gz', 'temp/cuteSV2.vcf.gz', 'temp/cuteSV3.vcf.gz']
     chrom_set = set()
-    contiginfo = set()
+    contiginfo = dict()
+    sample_set = set()
+    sample_ids = list()
     for vcf_filename in vcfgz_filenames:  # 默认header的config中存放了所有chrom信息
         vcf_reader = VariantFile(vcf_filename, 'r')
-        for contig in vcf_reader.header.contigs:
-            chrom_set.add(contig)  # contig 染色体号
+        for i in range(len(vcf_reader.header.contigs)):
+            chrom_set.add(str(vcf_reader.header.contigs[i].name))
+            contiginfo[str(vcf_reader.header.contigs[i].name)] = int(vcf_reader.header.contigs[i].length)
+        sample_id = vcf_reader.header.samples[0]
+        temp_sample_id = sample_id
+        temp_idx = 0
+        while temp_sample_id in sample_set:
+            temp_sample_id = sample_id + '_' + str(temp_idx)
+            temp_idx += 1
+        sample_ids.append(temp_sample_id)
+        sample_set.add(temp_sample_id)
     chrom_cnt = []  # 1:2989, 2:3009, 10:1956, X:1094
     '''
     base_cmd1 = 'grep -v \'#\' ' + vcf_filenames[0] + ' | awk -F \'\\t\' \'{print $1}\' | grep -x \''
@@ -101,11 +111,15 @@ def pre_vcf(filenames, threads, work_dir):
     '''
     for chrom in chrom_set:
         chrom_cnt.append([chrom])
-    return vcf_filenames, vcfgz_filenames, chrom_set, chrom_cnt, contiginfo
+    return vcfgz_filenames, chrom_set, chrom_cnt, contiginfo, sample_ids
 
 
-def ll_solve_chrom(vcf_filenames, chrom, max_dist, max_inspro):
-    #print('start ' + chrom)
+#def ll_solve_chrom(vcf_filenames, chrom, max_dist, max_inspro):
+def ll_solve_chrom(para):
+    vcf_filenames = para[0]
+    chrom = para[1]
+    max_dist = para[2]
+    max_inspro = para[3]
     start_time = time.time()
     list_head = ListNode(-1, None)
     cur_node = list_head
@@ -129,132 +143,53 @@ def ll_solve_chrom(vcf_filenames, chrom, max_dist, max_inspro):
         candidate_record = head.variant_dict[candidate_idx]  # Record
         result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, head.variant_dict])
         head = head.next
-    print('finish %s in %s, total %dnodes'%(chrom, str(time.time() - start_time), len(result)))
+    #print('finish %s in %s, total %dnodes'%(chrom, str(time.time() - start_time), len(result)))
     return result  # [[CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT], [], ...]
-
-
-'''
-    var_list: [[a, b, info], ...]
-    return [info] for which a <= breakpoint < b
-'''
-def div_in(var_list, breakpoint):
-    left = 0
-    right = len(var_list) - 1
-    mid = 0
-    info = []
-    while left < right:
-        mid = (left + right + 1) >> 1
-        if var_list[mid][0] <= breakpoint:
-            left = mid
-        else:
-            right = mid - 1
-    for i in range(left, -1, -1):
-        if breakpoint < var_list[i][1]:
-            info.append(var_list[i])
-        if 
-    return info
-
-'''
-    var_list: [[a, b, info], ...]
-    return [info] for which [start, end] and [a, b] overlap
-'''
-def div_overlap(var_list, start, end):
-    left = 0
-    right = len(var_list) - 1
-    mid = 0
-    info = []
-    while left < right:
-        mid = (left + right + 1) >> 1
-        if var_list[mid][0] <= start:
-            left = mid
-        else:
-            right = mid - 1
-    for i in range(left, -1, -1):
-        if start < var_list[i][1]:
-            info.append(var_list[i])
-
-    for i in range(left + 1, len(var_list), 1):
-        if var_list[i][0] < end:
-            info.append(var_list[i])
-    return info
-
-
-def add_anotation(var_list, sv_type, start, end):
-    if len(var_list) == 0:
-        return []
-    left = 0
-    right = len(var_list) - 1
-    mid = 0
-    while left < right:
-        mid = (left + right + 1) >> 1
-        if var_list[mid][0] <= start:
-            left = mid
-        else:
-            right = mid - 1
-    for i in range(left, -1, -1):
-        if start < var_list[i][0]: 
-
-    if right > 0 and pos - var_list[right - 1][1] <= 1000:
-        for i in range(right - 1, -1, -1):
-            if check_same_variant(var_type, var_list[i][2], sv_end):
-                read_id_list.add(var_list[i][3])
-                search_start = var_list[i][1]
-            if i > 0 and var_list[i][1] - var_list[i - 1][1] > bias:
-                break
-    if var_list[right][1] - pos <= 1000:
-        for i in range(right, len(var_list)):
-            if check_same_variant(var_type, var_list[i][2], sv_end):  # if abs(var_list[i][2] - sv_end) < 1000:
-                read_id_list.add(var_list[i][3])
-                search_end = var_list[i][1]
-            if i < len(var_list) - 1 and var_list[i + 1][1] - var_list[i][1] > bias:
-                break
-    return []
 
 
 def main(argv):
     start_time = time.time()
     max_dist = 1000
     max_inspro = 0.7
-    file_info = argv[0]
-    file_output = argv[1]
-    threads = argv[2]
-    work_dir = argv[3]
-    if work_dir[-1] != '/':
-        work_dir += '/'
-    if not os.path.exists(work_dir + 'index'):
-        os.mkdir(work_dir + 'index')
-    vcf_filenames, vcfgz_filenames, chrom_set, chrom_cnt, contiginfo = pre_vcf(file_info, threads, work_dir + 'index/')
-    '''
-    for chrom in chrom_set:
-        ll_solve_chrom(vcfgz_filenames, chrom, 1000, 0.7)
-        print(chrom + '\t' + str(time.time() - start_time))
-    '''
-    pool = Pool(processes = int(threads))
+    if args.work_dir[-1] != '/':
+        args.work_dir += '/'
+    if not os.path.exists(args.work_dir + 'index'):
+        os.mkdir(args.work_dir + 'index')
+    vcfgz_filenames, chrom_set, chrom_cnt, contiginfo, sample_ids = pre_vcf(args.input, args.threads, args.work_dir + 'index/')
+    pool = Pool(processes = args.threads)
     result = list()
+    '''
+    for iter in chrom_cnt: 
+        result.append(ll_solve_chrom(vcfgz_filenames, iter[0], max_dist, max_inspro))
+    '''
     for iter in chrom_cnt:
         # multi processes
         # print(iter[0])
         #if iter[1] == 0:
         #    continue
-        para = [vcfgz_filenames, iter[0], max_dist, max_inspro]
+        para = [(vcfgz_filenames, iter[0], max_dist, max_inspro)]
         result.append(pool.map_async(ll_solve_chrom, para))
+        #result.append(pool.map_async(call, para))
     pool.close()
     pool.join()
-    print('finish merging', end='')
+    print('finish merging in ', end='')
     print(time.time() - start_time)
 
     semi_result = list()
     for res in result:
         try:
             semi_result += res.get()[0]
+            #semi_result += res
         except:
             pass
     print('semi_result length=%d'%(len(semi_result)))
+    #print(semi_result)
+    #exit(0)
     semi_result = sorted(semi_result, key = lambda x:(x[0], int(x[1])))
 
-    output_result(semi_result, samples_id, file_output, contiginfo)
+    output_result(semi_result, sample_ids, args.output, contiginfo, args.annotation)
 
-    print('finish merge in ' + str(time.time() - start_time) + 'seconds')
+    print('finish in ' + str(time.time() - start_time) + 'seconds')
 
     #os.system('rm -r temp')
     #'''
@@ -262,11 +197,27 @@ def main(argv):
 
 if __name__ == '__main__':
     #main(sys.argv[1:])  # filenames.txt, threads
-    if len(sys.argv) == 2:
-        test()
-    else:
-        main(['test.info', 'sample_merged25.vcf', 16, './'])
-    #test()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('input',
+            metavar = 'input_file',
+            type = str,
+            help = 'filenames of VCF files to be merged')
+    parser.add_argument('output',
+            type = str,
+            help = 'output VCF format file')
+    parser.add_argument('work_dir',
+            type = str,
+            help = 'work directory for temporary files')
+    parser.add_argument('-t', '--threads',
+            type = int,
+            default = 16,
+            help = 'number of threads to use[%(default)s]')
+    parser.add_argument('-a', '--annotation',
+            type = str,
+            default = None,
+            help = 'annotation file to add')
+    args = parser.parse_args(sys.argv[1:])
+    main(args)
 
 
 '''
