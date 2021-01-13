@@ -1,14 +1,15 @@
 import time
 
 '''
-    var_list: [[a, b, info], ...]
-    return [info] for which a <= breakpoint < b
+    var_list: [[a, b, info_dict], ...] info_dict: {'GENE_ID': str, 'TRANSCRIPT_ID': str, ...}
+    [98881292, 98881515, {'gene_id': 'MATN2', 'transcript_id': 'NM_002380', ...}]
+    return info_dict for which a <= breakpoint < b
 '''
 def add_anotation_in(var_list, breakpoint):
     left = 0
     right = len(var_list) - 1
     mid = 0
-    info = []
+    info = dict()
     while left < right:
         mid = (left + right + 1) >> 1
         if var_list[mid][0] <= breakpoint:
@@ -17,20 +18,24 @@ def add_anotation_in(var_list, breakpoint):
             right = mid - 1
     for i in range(left, -1, -1):
         if breakpoint < var_list[i][1]:
-            info.append(var_list[i][2])
+            #info.append(var_list[i][2])
+            for info_item in var_list[i][2]:
+                if info_item not in info:
+                    info[info_item] = set()
+                info[info_item].add(var_list[i][2][info_item])
         if breakpoint - var_list[i][0] > 3000000:
             break
     return info
 
 '''
-    var_list: [[a, b, info], ...]
-    return [info] for which [start, end] and [a, b] overlap
+    var_list: [[a, b, info_dict], ...]
+    return info_dict for which [start, end] and [a, b] overlap
 '''
 def add_anotation_overlap(var_list, start, end):
     left = 0
     right = len(var_list) - 1
     mid = 0
-    info = []
+    info = dict()
     while left < right:
         mid = (left + right + 1) >> 1
         if var_list[mid][0] <= start:
@@ -39,41 +44,86 @@ def add_anotation_overlap(var_list, start, end):
             right = mid - 1
     for i in range(left, -1, -1):
         if start < var_list[i][1]:
-            info.append(var_list[i][2])
+            for info_item in var_list[i][2]:
+                if info_item not in info:
+                    info[info_item] = set()
+                info[info_item].add(var_list[i][2][info_item])
         if start - var_list[i][0] > 3000000:
             break
     for i in range(left + 1, len(var_list), 1):
         if var_list[i][0] < end:
-            info.append(var_list[i][2])
+            for info_item in var_list[i][2]:
+                if info_item not in info:
+                    info[info_item] = set()
+                info[info_item].add(var_list[i][2][info_item])
         else:
             break
     return info
 
 
-def parse_annotation_file(annotation_file):
-    start_time = time.time()
-    annotation_dict = dict()  # [chrom -> [[a, b, info], ...]]
-    with open(annotation_file, 'r') as f:
-        for line in f:
-            seq = line.strip().split('\t')
-            chr = seq[0]
-            if chr[:3] == "chr":
-                chr = chr[3:]
-            if chr not in annotation_dict:
-                annotation_dict[chr] = []
-            annotation_dict[chr].append([int(seq[3]), int(seq[4]), seq[8]])
-    print(time.time() - start_time)
+def solve_annotation(sv_type, anno_list, sv_start, sv_end):
+    annotation_dict = dict()
+    if len(anno_list) == 0:
+        return annotation_dict
+    if sv_type == 'INS':
+        annotation_dict = add_anotation_in(anno_list, sv_start)
+    elif sv_type == 'DEL':
+        annotation_dict = add_anotation_overlap(anno_list, sv_start, sv_start + sv_end)
+    elif sv_type == 'INV' or sv_type == 'DUP':
+        annotation_dict = add_anotation_overlap(anno_list, sv_start, sv_end)
+    elif sv_type == 'TRA':
+        annotation_dict = add_anotation_in(anno_list, sv_start)
     return annotation_dict
-            
 
 
-def output_result(semi_result, sample_ids, output_file, contiginfo, annotation_file):
+def solve_annotation_tra(anno_list, sv_end, anno_pre):
+    anno_list = add_anotation_in(anno_list, sv_end)
+    for info_item in anno_list:
+        if info_item not in anno_pre:
+            anno_pre[info_item] = set()
+        anno_pre[info_item].add(anno_list[info_item])
+    print('tra')
+    print(anno_pre)
+    return anno_pre
+
+
+def parse_annotation_dict(anno):
+    str = ''
+    if 'gene_id' in anno:
+        str += 'GENE_ID='
+        for item in anno['gene_id']:
+            str += item + ','
+        str = str[:-1] + ';'
+    if 'gene_name' in anno:
+        str += 'GENE_NAME='
+        for item in anno['gene_name']:
+            str += item + ','
+        str = str[:-1] + ';'
+    if 'transcript_id' in anno:
+        str += 'TRANSCRIPT_ID='
+        for item in anno['transcript_id']:
+            str += item + ','
+        str = str[:-1] + ';'
+    if 'exon_number' in anno:
+        str += 'EXON_NUMBER='
+        for item in anno['exon_number']:
+            str += item + ','
+        str = str[:-1] + ';'
+    if 'exon_id' in anno:
+        str += 'EXON_ID='
+        for item in anno['exon_id']:
+            str += item + ','
+        str = str[:-1] + ';'
+    if str != '' and str[-1] == ';':
+        str = str[:-1]
+    return str
+
+
+def output_result(semi_result, sample_ids, output_file, contiginfo):
     file = open(output_file, 'w')
     generate_header(file, contiginfo, sample_ids)
     #print('start writing to file ' + chrom)
-    if annotation_file != None:
-        annotation_dict = parse_annotation_file(annotation_file)
-    for item in semi_result:  # [CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT]
+    for item in semi_result:  # [CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT, ANNOTATION]
         supp_vec = ''
         supp_id = []
         for i in range(len(sample_ids)):
@@ -87,19 +137,8 @@ def output_result(semi_result, sample_ids, output_file, contiginfo, annotation_f
             filter_lable = "PASS"
         else:
             filter_lable = "PASS" if float(can_record.qual) >= 5.0 else "q5"
-        annotation_list = []
-        if annotation_file != None:
-            if can_record.chrom1 in annotation_dict:
-                if can_record.type == 'INS':
-                    annotation_list = add_anotation_in(annotation_dict[can_record.chrom1], can_record.start)
-                elif can_record.type == 'DEL':
-                    annotation_list = add_anotation_overlap(annotation_dict[can_record.chrom1], can_record.start, can_record.start + can_record.end)
-                elif can_record.type == 'INV' or can_record.type == 'DUP':
-                    annotation_list = add_anotation_overlap(annotation_dict[can_record.chrom1], can_record.start, can_record.end)
-                elif can_record.type == 'TRA':
-                    annotation_list = add_anotation_in(annotation_dict[can_record.chrom1], can_record.start)
-            if can_record.type == 'TRA' and can_record.chrom2 in annotation_dict:
-                annotation_list += add_anotation_in(annotation_dict[can_record.chrom2], can_record.end)
+        annotation_dict = item[6]
+        anno_str = parse_annotation_dict(annotation_dict)
         if can_record.type == 'INS':
             sv_len = can_record.end
             sv_end = can_record.start
@@ -114,8 +153,8 @@ def output_result(semi_result, sample_ids, output_file, contiginfo, annotation_f
                     CILEN = str(item[4]))
             if can_record.strand != '.':
                 info_list += ';STRAND=' + can_record.strand
-            if annotation_list != []:
-                info_list += ';ANNOTATION=' + '|'.join(annotation_list)
+            if anno_str != '':
+                info_list += ';' + anno_str
         elif can_record.type == 'DEL':
             sv_len = -can_record.end
             sv_end = can_record.start + can_record.end
@@ -130,8 +169,8 @@ def output_result(semi_result, sample_ids, output_file, contiginfo, annotation_f
                     CIEND = str(item[4]))
             if can_record.strand != '.':
                 info_list += ';STRAND=' + can_record.strand
-            if annotation_list != []:
-                info_list += ';ANNOTATION=' + '|'.join(annotation_list)
+            if anno_str != '':
+                info_list += ';' + anno_str
         elif can_record.type == 'INV' or can_record.type == 'DUP':
             sv_len = can_record.end - can_record.start + 1
             sv_end = can_record.end
@@ -144,16 +183,16 @@ def output_result(semi_result, sample_ids, output_file, contiginfo, annotation_f
                     END = sv_end)
             if can_record.strand != '.':
                 info_list += ';STRAND=' + can_record.strand
-            if annotation_list != []:
-                info_list += ';ANNOTATION=' + '|'.join(annotation_list)
+            if anno_str != '':
+                info_list += ';' + anno_str
         elif can_record.type == 'BND':
             info_list = "SVTYPE={SVTYPE};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
                     SUPP = len(item[5]),
                     SUPP_ID = ','.join(supp_id),
                     SUPP_VEC = supp_vec,
                     SVTYPE = can_record.type)
-            if annotation_list != []:
-                info_list += ';ANNOTATION=' + '|'.join(annotation_list)
+            if anno_str != '':
+                info_list += ';' + anno_str
             
         file.write("{CHR}\t{POS}\t{ID}\t{REF}\t{ALT}\t{QUAL}\t{PASS}\t{INFO}\t{FORMAT}\t".format(
             CHR = can_record.chrom1, 

@@ -1,21 +1,12 @@
 from cuteSV_calculation import cal_center, cal_ci
 from cuteSV_linkedList import add_node, print_list, ListNode, Record
-from cuteSV_output import output_result
+from cuteSV_output import output_result, solve_annotation
 from pysam import VariantFile
 from multiprocessing import Pool, Manager
 import os
 import sys
 import time
 import argparse
-
-
-def test():
-    vcf_reader = VariantFile('temp/cuteSV1.vcf.gz', 'r')
-    for record in vcf_reader.fetch('1'):
-        r = Record(record, '1')
-        print(record)
-        print(r.start)
-        print(r.end)
         
 
 def solve_chrom(vcf_filenames, chrom):
@@ -28,34 +19,14 @@ def solve_chrom(vcf_filenames, chrom):
         for record in vcf_reader.fetch(chrom):
             idx += 1
             tree.insert(i, Record(record, i))
-            '''
-            print(idx)
-            print(Record(record, i).to_string())
-            #if record.start == 142535438 and record.info['SVTYPE'] == 'DUP':
-            if idx == 1560:
-                print(record)
-                node_list = []
-                vis_list = []
-                tree.inorder(tree.root, node_list, vis_list)
-                for node in node_list:
-                    for r in node:
-                        print(r.to_string(), end='')
-                        print('\t')
-                    print('\n')
-                break
-            #'''
-        #print(idx)
-    #print('start output chrom: ' + chrom)
     time1 = time.time()
     output_chrom(tree, len(vcf_filenames), chrom)
-    #print('finish solving chrom: ' + chrom)
     time2 = time.time()
-    #print(str(time1 - time0) + ' ' + str(time2 - time1))
 
 
-def create_index(line, gz_filename, work_dir):
-    cmd = 'bgzip -c ' + line + ' > ' + gz_filename
+def create_index(line, gz_filename):
     try:
+        cmd = 'bgzip -c ' + line + ' > ' + gz_filename
         os.system(cmd)
         os.system('tabix -p vcf ' + gz_filename)
     except Exception as ee:
@@ -65,21 +36,19 @@ def pre_vcf(filenames, threads, work_dir):
     process_pool = Pool(processes = threads)
     vcf_filenames = []
     vcfgz_filenames = []
-    start_time = time.time()
+    #start_time = time.time()
     with open(filenames, 'r') as f:
         for line in f:
             line = line.strip()
             vcf_filenames.append(line)
             filename = line.split('/')[-1]
-            if filename[-2: 0] != 'gz':
-                filename += '.gz'
-                gz_filename = work_dir + line.split('/')[-1] + '.gz'
-                vcfgz_filenames.append(gz_filename)
-                process_pool.apply_async(create_index, (line, gz_filename, work_dir))
-            #os.system('tabix -p vcf ' + line)
-            else:
-                vcfgz_filenames.append(line)
-    #print(vcfgz_filenames)
+            if filename[-3:] != 'vcf':
+                print('input error')
+                continue
+            filename += '.gz'
+            gz_filename = work_dir + line.split('/')[-1] + '.gz'
+            vcfgz_filenames.append(gz_filename)
+            process_pool.apply_async(create_index, (line, gz_filename))
     process_pool.close()
     process_pool.join()
     chrom_set = set()
@@ -99,7 +68,7 @@ def pre_vcf(filenames, threads, work_dir):
             temp_idx += 1
         sample_ids.append(temp_sample_id)
         sample_set.add(temp_sample_id)
-    chrom_cnt = []  # 1:2989, 2:3009, 10:1956, X:1094
+    chrom_cnt = []
     '''
     base_cmd1 = 'grep -v \'#\' ' + vcf_filenames[0] + ' | awk -F \'\\t\' \'{print $1}\' | grep -x \''
     base_cmd2 = '\' | wc -l'
@@ -114,12 +83,42 @@ def pre_vcf(filenames, threads, work_dir):
     return vcfgz_filenames, chrom_set, chrom_cnt, contiginfo, sample_ids
 
 
-#def ll_solve_chrom(vcf_filenames, chrom, max_dist, max_inspro):
+def parse_annotation_file(annotation_file):
+    annotation_dict = Manager().dict()  # [chrom -> [[a, b, dict()], ...]]
+    if annotation_file == None:
+        return annotation_dict
+    start_time = time.time()
+    with open(annotation_file, 'r') as f:
+        for line in f:
+            seq = line.strip().split('\t')
+            chr = seq[0]
+            if chr[:3] == "chr":
+                chr = chr[3:]
+            if chr not in annotation_dict:
+                annotation_dict[chr] = []
+            info_seq = seq[8].strip().split(';')
+            info_dict = dict()
+            for info_item in info_seq[:-1]:
+                info_item = info_item.strip().split(' ')
+                if len(info_item) != 2:
+                    print('error:length of gtf_info_item is not 2')
+                    continue
+                info_dict[info_item[0]] = info_item[1][1:-1]
+            annotation_dict[chr].append([int(seq[3]), int(seq[4]), info_dict])    
+    print(time.time() - start_time)
+    return annotation_dict
+
+
 def ll_solve_chrom(para):
     vcf_filenames = para[0]
     chrom = para[1]
     max_dist = para[2]
     max_inspro = para[3]
+    annotation_dict = para[4]
+    if chrom in annotation_dict:
+        anno = annotation_dict[chrom]
+    else:
+        anno = []
     start_time = time.time()
     list_head = ListNode(-1, None)
     cur_node = list_head
@@ -127,27 +126,25 @@ def ll_solve_chrom(para):
         idx = 0
         vcf_reader = VariantFile(vcf_filenames[i], 'r')
         for record in vcf_reader.fetch(chrom):
-            #print(record,end='')
             idx += 1
             cur_node = add_node(cur_node, i, Record(record, i), max_dist, max_inspro)
-            #print(cur_node.to_string())
-            #print()
-    #print(cur_node.to_string())
-    #print_list(list_head.next)
-    #output_chrom(list_head.next, len(vcf_filenames), chrom)
 
     result = list()
     head = list_head.next
     while head != None:
         candidate_idx, cipos, ciend = cal_center(head.variant_dict)
         candidate_record = head.variant_dict[candidate_idx]  # Record
-        result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, head.variant_dict])
+        annotation = solve_annotation(candidate_record.type, anno, candidate_record.start, candidate_record.end)  # dict{'gene_id' -> str}
+        if candidate_record.type == 'TRA':
+            annotation = solve_annotation_tra(annotation_dict[candidate_record.chrom2], candidate_record.end, annotation)
+            print(annotation)
+        result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, head.variant_dict, annotation])
         head = head.next
-    #print('finish %s in %s, total %dnodes'%(chrom, str(time.time() - start_time), len(result)))
-    return result  # [[CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT], [], ...]
+    print('finish %s in %s, total %dnodes'%(chrom, str(time.time() - start_time), len(result)))
+    return result  # [[CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT, ANNOTATION], [], ...]
 
 
-def main(argv):
+def main(args):
     start_time = time.time()
     max_dist = 1000
     max_inspro = 0.7
@@ -156,20 +153,24 @@ def main(argv):
     if not os.path.exists(args.work_dir + 'index'):
         os.mkdir(args.work_dir + 'index')
     vcfgz_filenames, chrom_set, chrom_cnt, contiginfo, sample_ids = pre_vcf(args.input, args.threads, args.work_dir + 'index/')
+    print('finish indexing')
     pool = Pool(processes = args.threads)
     result = list()
+    annotation_dict = parse_annotation_file(args.annotation)
     '''
     for iter in chrom_cnt: 
-        result.append(ll_solve_chrom(vcfgz_filenames, iter[0], max_dist, max_inspro))
+        result.append(ll_solve_chrom([vcfgz_filenames, iter[0], max_dist, max_inspro, annotation_dict]))
     '''
+    #result.append(ll_solve_chrom([vcfgz_filenames, '1', max_dist, max_inspro, annotation_dict]))
+    #'''
     for iter in chrom_cnt:
         # multi processes
-        # print(iter[0])
+        #print(iter[0])
         #if iter[1] == 0:
         #    continue
-        para = [(vcfgz_filenames, iter[0], max_dist, max_inspro)]
+        para = [(vcfgz_filenames, iter[0], max_dist, max_inspro, annotation_dict)]
         result.append(pool.map_async(ll_solve_chrom, para))
-        #result.append(pool.map_async(call, para))
+    #'''
     pool.close()
     pool.join()
     print('finish merging in ', end='')
@@ -183,20 +184,17 @@ def main(argv):
         except:
             pass
     print('semi_result length=%d'%(len(semi_result)))
-    #print(semi_result)
-    #exit(0)
     semi_result = sorted(semi_result, key = lambda x:(x[0], int(x[1])))
 
-    output_result(semi_result, sample_ids, args.output, contiginfo, args.annotation)
+    output_result(semi_result, sample_ids, args.output, contiginfo)
 
     print('finish in ' + str(time.time() - start_time) + 'seconds')
 
-    #os.system('rm -r temp')
+    os.system('rm -r ' + args.work_dir + 'index/')
     #'''
     
 
 if __name__ == '__main__':
-    #main(sys.argv[1:])  # filenames.txt, threads
     parser = argparse.ArgumentParser()
     parser.add_argument('input',
             metavar = 'input_file',
@@ -218,7 +216,8 @@ if __name__ == '__main__':
             help = 'annotation file to add')
     args = parser.parse_args(sys.argv[1:])
     main(args)
-
+    # python src/cuteSV_merge.py file.info sample_merged25.vcf ./ -t 16 -a hg19.refGene.gtf
+    # python src/cuteSV_merge.py test.info test_merged.vcf ./ -t 16 -a hg19.refGene.gtf
 
 '''
 chrom_set = set()
