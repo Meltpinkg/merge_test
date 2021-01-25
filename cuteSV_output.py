@@ -63,7 +63,7 @@ def add_anotation_overlap(var_list, start, end):
 
 def solve_annotation(sv_type, anno_list, sv_start, sv_end):
     annotation_dict = dict()
-    if len(anno_list) == 0:
+    if anno_list == None or len(anno_list) == 0:
         return annotation_dict
     if sv_type == 'INS':
         annotation_dict = add_anotation_in(anno_list, sv_start)
@@ -171,10 +171,10 @@ def output_result(semi_result, sample_ids, output_file, contiginfo):
                 info_list += ';STRAND=' + can_record.strand
             if anno_str != '':
                 info_list += ';' + anno_str
-        elif can_record.type == 'INV' or can_record.type == 'DUP':
+        elif can_record.type == 'INV' or 'DUP' in can_record.type:
             sv_len = can_record.end - can_record.start + 1
             sv_end = can_record.end
-            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END}SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
+            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
                     SUPP = len(item[5]),
                     SUPP_ID = ','.join(supp_id),
                     SUPP_VEC = supp_vec,
@@ -193,6 +193,8 @@ def output_result(semi_result, sample_ids, output_file, contiginfo):
                     SVTYPE = can_record.type)
             if anno_str != '':
                 info_list += ';' + anno_str
+        else:
+            print(can_record.type)
             
         file.write("{CHR}\t{POS}\t{ID}\t{REF}\t{ALT}\t{QUAL}\t{PASS}\t{INFO}\t{FORMAT}\t".format(
             CHR = can_record.chrom1, 
