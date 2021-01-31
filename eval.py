@@ -90,7 +90,9 @@ def parse_nstd(filename):
         sv_dict[bx] = dict()
     with open(filename, 'r') as f:
         idx = 0
-        pre = 0
+        pres = 0
+        pree = 0
+        pre_type = ''
         for line in f:
             if line[0] == '#':
                 continue
@@ -104,10 +106,7 @@ def parse_nstd(filename):
                 sv_type = 'BND'
             if 'DUP' in sv_type:
                 sv_type = 'DUP'
-            if start == pre and sv_type != 'BND':
-                continue
             idx += 1
-            pre = start
             if sv_type == 'INS' or sv_type == 'DEL':
                 end = abs(int(lineseq[7].split(';SVLEN=')[1].split(';')[0]))
             elif sv_type == 'BND':
@@ -115,6 +114,11 @@ def parse_nstd(filename):
             else:
                 end = abs(int(lineseq[7].split(';END=')[1].split(';')[0]))
             name = 'variant' + str(idx)
+            if start == pres and pree == end and sv_type == pre_type and sv_type != 'BND':
+                continue
+            pres = start
+            pree = end
+            pre_type = sv_type
             if chrom1 in sv_dict[sv_type]:
                 sv_dict[sv_type][chrom1].append([start, end, name])
             else:
@@ -139,6 +143,12 @@ def solve_two_vcf(vcf1, vcf2, output):  #vcf1是被比较的
                 temp_end = 0
                 if chrom in sv_dict2[sv_type]:
                     for temp_list in sv_dict2[sv_type][chrom]:
+                        '''
+                        if record_list[0] == 64704785 and temp_list[0] == 64704786:
+                            print(record_list[1])
+                            print(temp_list[1])
+                            print(check_same_variant(sv_type, record_list[0], temp_list[0], record_list[1], temp_list[1]))
+                        '''
                         if check_same_variant(sv_type, record_list[0], temp_list[0], record_list[1], temp_list[1]):
                             file.write('same variant on chr%s (%d, %d), (%d, %d)\n'%(chrom, record_list[0], record_list[1], temp_list[0], temp_list[1]))
                             flag = 1
@@ -199,11 +209,13 @@ def solve_two_vcf(vcf1, vcf2, output):  #vcf1是被比较的
 
 
 if __name__ == '__main__':
-    '''
     vcf_standard = sys.argv[1]
     vcf_test = sys.argv[2]
     output = sys.argv[3]
     right1, standard_cnt = solve_two_vcf(vcf_standard, vcf_test, output)
+    print(right1)
+    print(standard_cnt)
+    '''
     right2, test_cnt = solve_two_vcf(vcf_test, vcf_standard, output)
     precision = right2 / test_cnt
     recall = right1 / standard_cnt
@@ -211,6 +223,7 @@ if __name__ == '__main__':
     print('precision = %f'%(round(precision, 4)))
     print('recall = %f'%(round(recall, 4)))
     print('F1 = %f'%(round(F1, 4)))
+    '''
     '''
     vcf_standard = 'nstd162.GRCh37.variant_call.vcf'
     output = 'tmp'
@@ -230,5 +243,6 @@ if __name__ == '__main__':
             print('precision = %.4f'%(round(precision, 4)))
             print('recall = %.4f'%(round(recall, 4)))
             print('F1 = %.4f'%(round(F1, 4)))
+    '''
 
             

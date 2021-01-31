@@ -119,11 +119,9 @@ def parse_annotation_dict(anno):
     return str
 
 
-def output_result(semi_result, sample_ids, output_file, contiginfo):
-    file = open(output_file, 'w')
-    generate_header(file, contiginfo, sample_ids)
-    #print('start writing to file ' + chrom)
-    for item in semi_result:  # [CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT, ANNOTATION]
+def output_result(semi_result, sample_ids, output_file):
+    file = open(output_file, 'a')
+    for item in semi_result:  # [CHROM, POS, CANDIDATE_RECORD, CIPOS, CILEN, DICT, ANNOTATION]
         supp_vec = ''
         supp_id = []
         for i in range(len(sample_ids)):
@@ -155,10 +153,10 @@ def output_result(semi_result, sample_ids, output_file, contiginfo):
                 info_list += ';STRAND=' + can_record.strand
             if anno_str != '':
                 info_list += ';' + anno_str
-        elif can_record.type == 'DEL':
+        elif 'DEL' in can_record.type:
             sv_len = -can_record.end
             sv_end = can_record.start + can_record.end
-            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CIEND={CIEND};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
+            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CILEN={CILEN};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
                     SUPP = len(item[5]),
                     SUPP_ID = ','.join(supp_id),
                     SUPP_VEC = supp_vec,
@@ -166,7 +164,7 @@ def output_result(semi_result, sample_ids, output_file, contiginfo):
                     SVLEN = sv_len, 
                     END = sv_end, 
                     CIPOS = str(item[3]), 
-                    CIEND = str(item[4]))
+                    CILEN = str(item[4]))
             if can_record.strand != '.':
                 info_list += ';STRAND=' + can_record.strand
             if anno_str != '':
@@ -193,8 +191,6 @@ def output_result(semi_result, sample_ids, output_file, contiginfo):
                     SVTYPE = can_record.type)
             if anno_str != '':
                 info_list += ';' + anno_str
-        else:
-            print(can_record.type)
             
         file.write("{CHR}\t{POS}\t{ID}\t{REF}\t{ALT}\t{QUAL}\t{PASS}\t{INFO}\t{FORMAT}\t".format(
             CHR = can_record.chrom1, 
@@ -246,7 +242,8 @@ def generate_header(file, contiginfo, sample_ids):
     file.write("##INFO=<ID=STRAND,Number=A,Type=String,Description=\"Strand orientation of the adjacency in BEDPE format (DEL:+-, DUP:-+, INV:++/--)\">\n")
     #file.write("##INFO=<ID=RNAMES,Number=.,Type=String,Description=\"Supporting read names of SVs (comma separated)\">\n")
     file.write("##INFO=<ID=SUPP,Number=1,Type=String,Description=\"Number of samples supporting the variant\">\n")
-    file.write("##INFO=<ID=SUPPID,Number=1,Type=String,Description=\"Samples supporting the variant\">\n")
+    file.write("##INFO=<ID=SUPP_ID,Number=1,Type=String,Description=\"Samples supporting the variant\">\n")
+    file.write("##INFO=<ID=SUPP_VEC,Number=1,Type=String,Description=\"Samples id supporting the variant\">\n")
     file.write("##FILTER=<ID=q5,Description=\"Quality below 5\">\n")
     
     # FORMAT
