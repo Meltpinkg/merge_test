@@ -154,8 +154,8 @@ def output_result(semi_result, sample_ids, output_file):
             if anno_str != '':
                 info_list += ';' + anno_str
         elif 'DEL' in can_record.type:
-            sv_len = -can_record.end
-            sv_end = can_record.start + can_record.end
+            sv_len = can_record.end
+            sv_end = can_record.start - can_record.end
             info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CILEN={CILEN};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
                     SUPP = len(item[5]),
                     SUPP_ID = ','.join(supp_id),
@@ -191,7 +191,16 @@ def output_result(semi_result, sample_ids, output_file):
                     SVTYPE = can_record.type)
             if anno_str != '':
                 info_list += ';' + anno_str
-            
+        # calculate AF
+        af = 0
+        for i in range(len(sample_ids)):
+            if i in item[5]:
+                if item[5][i].gt == '0/1':
+                    af += 1
+                elif item[5][i].gt == '1/1':
+                    af += 2
+        af = af / len(sample_ids) / 2
+        info_list += ';AF=' + str(round(af, 4))
         file.write("{CHR}\t{POS}\t{ID}\t{REF}\t{ALT}\t{QUAL}\t{PASS}\t{INFO}\t{FORMAT}\t".format(
             CHR = can_record.chrom1, 
             POS = can_record.start,
@@ -201,14 +210,14 @@ def output_result(semi_result, sample_ids, output_file):
             QUAL = '.' if can_record.qual is None else can_record.qual,
             PASS = filter_lable,
             INFO = info_list, 
-            FORMAT = "GT:ID:RAL:AAL:CO",
+            FORMAT = "GT:RAL:AAL:CO",
             ))
         for i in range(len(sample_ids)):
             if i in item[5]:
-                file.write("%s:%s:%s:%s:"%(item[5][i].gt, item[5][i].name, item[5][i].ref, ','.join(item[5][i].alt)))
+                file.write("%s:%s:%s:"%(item[5][i].gt, item[5][i].ref.replace(':', '_'), (','.join(item[5][i].alt)).replace(':', '_')))
                 file.write("%s_%d-%s_%d\t"%(item[5][i].chrom1, item[5][i].start, item[5][i].chrom2, item[5][i].end))
             else:
-                file.write("./.:NAN:NAN:NAN:NAN\t")
+                file.write("./.:NAN:NAN:NAN\t")
         file.write('\n')
     file.close()
 
@@ -244,6 +253,7 @@ def generate_header(file, contiginfo, sample_ids):
     file.write("##INFO=<ID=SUPP,Number=1,Type=String,Description=\"Number of samples supporting the variant\">\n")
     file.write("##INFO=<ID=SUPP_ID,Number=1,Type=String,Description=\"Samples supporting the variant\">\n")
     file.write("##INFO=<ID=SUPP_VEC,Number=1,Type=String,Description=\"Samples id supporting the variant\">\n")
+    file.write("##INFO=<ID=AF,Number=1,Type=Float,Description=\"Allele frequency\">\n")
     file.write("##FILTER=<ID=q5,Description=\"Quality below 5\">\n")
     
     # FORMAT
@@ -254,7 +264,6 @@ def generate_header(file, contiginfo, sample_ids):
     file.write("##FORMAT=<ID=PL,Number=G,Type=Integer,Description=\"# Phred-scaled genotype likelihoods rounded to the closest integer\">\n")
     file.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"# Genotype quality\">\n")
     '''
-    file.write("##FORMAT=<ID=ID,Number=1,Type=String,Description=\"Variant ID\">\n")
     file.write("##FORMAT=<ID=CO,Number=1,Type=String,Description=\"Sequence coordinates\">\n")
     file.write("##FORMAT=<ID=RAL,Number=1,Type=String,Description=\"Reference allele sequence\">\n")
     file.write("##FORMAT=<ID=AAL,Number=1,Type=String,Description=\"Alternative allele sequence\">\n")

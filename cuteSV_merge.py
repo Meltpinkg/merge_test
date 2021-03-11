@@ -169,7 +169,7 @@ def parse_vcfs(filenames, threads):
 
 
 # all variants on the chrom
-def resolve_chrom(filenames, output, chrom, sample_ids, threads, max_dist, max_inspro, anno):
+def resolve_chrom(filenames, output, chrom, sample_ids, threads, max_dist, max_inspro, seperate_svtype, anno):
     #print('start resolving chrom ' + chrom)
     start_time = time.time()
     pool = Pool(processes = threads)
@@ -180,10 +180,13 @@ def resolve_chrom(filenames, output, chrom, sample_ids, threads, max_dist, max_i
         idx += 1
     pool.close()
     pool.join()
-    result = solve_chrom2(record_dict, max_dist, max_inspro, anno)
+    if seperate_svtype:
+        result = solve_chrom2(record_dict, max_dist, max_inspro, anno)
+    else:
+        result = solve_chrom1(record_dict, max_dist, max_inspro, anno)
     result = sorted(result, key = lambda x:(x[0], int(x[1])))
     output_result(result, sample_ids, output)
-    print('finish resolving %s in %s'%(chrom, round(time.time() - start_time, 4)))
+    #print('finish resolving %s, %d in %s'%(chrom, len(result), round(time.time() - start_time, 4)))
 
 def parse_vcf_chrom(para):
     filename = para[0]
@@ -359,7 +362,8 @@ def main_ctrl(args):
                 anno = annotation_dict[contig]
         else:
             anno = []
-        resolve_chrom(filenames, args.output, contig, sample_ids, args.IOthreads, max_dist, max_inspro, anno)
+        resolve_chrom(filenames, args.output, contig, sample_ids, args.IOthreads, max_dist, max_inspro, args.seperate_svtype, anno)
+    print('finish merging in %s'%(round(time.time() - start_time, 4)))
     os.system('rm -r ' + args.work_dir + 'index/')
 
 def main(args):
@@ -393,38 +397,7 @@ def main(args):
                 anno = []
             para.append([chr_dict[chr], chr, max_dist, max_inspro, anno])
         result = pool.map(ll_solve_chrom, para)
-        # result = pool.map(ll_solve_chrom, para)
-    '''
-    for iter in chrom_cnt:
-        if annotation_dict != None and iter[0] in annotation_dict:
-            anno = annotation_dict[iter[0]]
-        else:
-            anno = []
-        result.append(ll_solve_chrom([vcfgz_filenames, iter[0], max_dist, max_inspro, anno]))
-    '''
-    '''
-    for iter in chrom_cnt:
-        # multi processes
-        #print(iter[0])
-        #if iter[1] == 0:
-        #    continue
-        if annotation_dict != None and iter[0] in annotation_dict:
-            anno = annotation_dict[iter[0]]
-        else:
-            anno = []
-        para = [(vcfgz_filenames, iter[0], max_dist, max_inspro, anno)]
-        result.append(pool.map_async(ll_solve_chrom, para))
-    '''
-    '''
-    para = []
-    for iter in chrom_cnt:
-        if annotation_dict != None and iter[0] in annotation_dict:
-            anno = annotation_dict[iter[0]]
-        else:
-            anno = []
-        para.append([vcfgz_filenames, iter[0], max_dist, max_inspro, anno])
-    result = pool.map(ll_solve_chrom, para, chunksize = 1)
-    '''
+
     pool.close()
     pool.join()
     print('finish merging in ', end='')
@@ -439,7 +412,10 @@ def main(args):
     print('semi_result length=%d'%(len(semi_result)))
     semi_result = sorted(semi_result, key = lambda x:(x[0], int(x[1])))
 
-    output_result(semi_result, sample_ids, args.output, contiginfo, add_sample_info)
+    file = open(args.output, 'w')
+    generate_header(file, contiginfo, sample_ids)
+    file.close()
+    output_result(semi_result, sample_ids, args.output)
 
     print('finish in ' + str(time.time() - start_time) + 'seconds')
 
@@ -471,12 +447,22 @@ if __name__ == '__main__':
             type = str,
             default = None,
             help = 'annotation file to add')
+    parser.add_argument('--seperate_svtype',
+            action="store_true",
+            default = False)
+    parser.add_argument('--seperate_chrom',
+            action="store_true",
+            default = False)
     args = parser.parse_args(sys.argv[1:])
-    #main(args)
-    main_ctrl(args)
+    if args.seperate_chrom:
+        main_ctrl(args)
+    else:
+        main(args)
     # /usr/bin/time -v python src/cuteSV_merge.py input/file_SRR.fofn sample_merged25.vcf ./ -t 16 -a hg19.refGene.gtf
     # /usr/bin/time -v python src/cuteSV_merge.py test.info test_merged.vcf ./ -t 16 -a hg19.refGene.gtf
     # /usr/bin/time -v python src/cuteSV_merge.py input/cutesv.fofn merged_cutesv.vcf ./ -t 16
+    # /usr/bin/time -v python src/cuteSV_merge.py input/sniffles.fofn merged1_sniffles.vcf ./ -t 16
+    # /usr/bin/time -v python src/cuteSV_merge.py input/pbsv.fofn output/merged_pbsv.vcf ./ -t 16
 
 '''
 chrom_set = set()
@@ -485,4 +471,35 @@ for vcf_filename in vcf_filenames:
     base_cmd += vcf_filename + ' '
 base_cmd += '| grep -v \'#\' | awk -F \'\\t\' \'{print $1}\' | uniq | sort | uniq'
 print(base_cmd)
+'''
+'''
+for iter in chrom_cnt:
+    if annotation_dict != None and iter[0] in annotation_dict:
+        anno = annotation_dict[iter[0]]
+    else:
+        anno = []
+    result.append(ll_solve_chrom([vcfgz_filenames, iter[0], max_dist, max_inspro, anno]))
+'''
+'''
+for iter in chrom_cnt:
+    # multi processes
+    #print(iter[0])
+    #if iter[1] == 0:
+    #    continue
+    if annotation_dict != None and iter[0] in annotation_dict:
+        anno = annotation_dict[iter[0]]
+    else:
+        anno = []
+    para = [(vcfgz_filenames, iter[0], max_dist, max_inspro, anno)]
+    result.append(pool.map_async(ll_solve_chrom, para))
+'''
+'''
+para = []
+for iter in chrom_cnt:
+    if annotation_dict != None and iter[0] in annotation_dict:
+        anno = annotation_dict[iter[0]]
+    else:
+        anno = []
+    para.append([vcfgz_filenames, iter[0], max_dist, max_inspro, anno])
+result = pool.map(ll_solve_chrom, para, chunksize = 1)
 '''
