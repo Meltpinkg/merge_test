@@ -62,15 +62,15 @@ class ListNode(object):
             self.represent = None
         else:
             self.variant_dict = dict()
-            self.variant_dict[id] = [record]
+            self.variant_dict[id] = record
             self.represent = record
         self.pre = pre
         self.next = next
     def add(self, id, record):
-        if id not in self.variant_dict:
-            self.variant_dict[id] = list()
-        self.variant_dict[id].append(record)
-        # self.variant_dict[id] = record
+        if id in self.variant_dict:
+            print('sample id already in variant dict')
+        else:
+            self.variant_dict[id] = record
     def to_string(self):
         string = 'List size = ' + str(len(self.variant_dict)) + ', '
         for id in self.variant_dict:
@@ -100,12 +100,15 @@ def parse_to_int(sth):
     max_inspro [default = 0.7]
     return True / False
 '''
-def check_is_same(cur, input, max_dist, max_inspro):
+def check_is_same(cur, input, max_dist, max_insratio, max_delratio):
     #if input.type == cur.type and input.strand == cur.strand:
     if input.type == cur.type:
         if abs(input.start - cur.start) < 1000:
-            if input.type == 'INS' or input.type == 'DEL':
-                if 0.7 < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
+            if input.type == 'INS':
+                if max_insratio < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
+                    return True
+            elif input.type == 'DEL':
+                if max_delratio < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
                     return True
             else:
                 if abs(input.end - cur.end) < max_dist:
@@ -144,7 +147,7 @@ def insert_node(head, id, record):
     record -> Record
     在head附近某处添加(add/insert) ListNode(id, record)
 '''
-def add_node(head, id, record, max_dist, max_inspro):
+def add_node(head, id, record, max_dist, max_insratio, max_delratio):
     if head.represent == None:
         node = ListNode(id, record)
         node.pre = head
@@ -152,7 +155,7 @@ def add_node(head, id, record, max_dist, max_inspro):
         return node
     cur = head
     while cur != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro) and id not in cur.variant_dict:
+        if check_is_same(cur.represent, record, max_dist, max_insratio, max_delratio) and id not in cur.variant_dict:
             cur.add(id, record)
             return cur
         if cur.represent.start - record.start > 2 * max_dist:  # cannot merge
@@ -161,34 +164,7 @@ def add_node(head, id, record, max_dist, max_inspro):
         #print('next')
     cur = head.pre
     while cur.represent != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro) and id not in cur.variant_dict:
-            cur.add(id, record)
-            return cur
-        if record.start - cur.represent.start > 2 * max_dist:
-            break
-        cur = cur.pre
-        #print('pre')
-    cur = cur.next
-    return insert_node(cur, id, record)
-
-def add_node_indel(head, id, record, max_dist, max_inspro):
-    if head.represent == None:
-        node = ListNode(id, record)
-        node.pre = head
-        head.next = node
-        return node
-    cur = head
-    while cur != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro):
-            cur.add(id, record)
-            return cur
-        if cur.represent.start - record.start > 2 * max_dist:  # cannot merge
-            break
-        cur = cur.next
-        #print('next')
-    cur = head.pre
-    while cur.represent != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro):
+        if check_is_same(cur.represent, record, max_dist, max_insratio, max_delratio) and id not in cur.variant_dict:
             cur.add(id, record)
             return cur
         if record.start - cur.represent.start > 2 * max_dist:

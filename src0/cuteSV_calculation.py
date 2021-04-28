@@ -11,19 +11,19 @@ def cal_center(node):
     r_end = 0
     start_list = []
     end_list = []
-    for record in node:
-        r_start += record.start
-        r_end += record.end
-        start_list.append(record.start)
-        end_list.append(record.end)
+    for nodeid in node:
+        r_start += node[nodeid].start
+        r_end += node[nodeid].end
+        start_list.append(node[nodeid].start)
+        end_list.append(node[nodeid].end)
     r_start = r_start / len(node)
     r_end = r_end / len(node)
     r_id = 0
     start_dif = 0x3f3f3f3f
-    for id in range(len(node)):
-        if abs(node[id].start - r_start) < start_dif:
-            start_dif = node[id].start - r_start
-            r_id = id
+    for nodeid in node:
+        if abs(node[nodeid].start - r_start) < start_dif:
+            start_dif = node[nodeid].start - r_start
+            r_id = nodeid
     return r_id, cal_ci(start_list), cal_ci(end_list)
 
 

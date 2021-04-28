@@ -1,5 +1,5 @@
 from cuteSV_calculation import cal_center, cal_ci, cal_can
-from cuteSV_linkedList import add_node, add_node_indel, print_list, ListNode, Record
+from cuteSV_linkedList import add_node, print_list, ListNode, Record
 from cuteSV_output import output_result, solve_annotation, generate_header
 from pysam import VariantFile
 from multiprocessing import Pool, Manager
@@ -259,8 +259,8 @@ def ll_solve_chrom(para):
     max_inspro = para[3]
     anno = para[4]
     support = para[5]
-    diff_ratio_merging_INS = para[6]
-    diff_ratio_merging_DEL = para[7]
+    max_insratio = para[6]
+    max_delratio = para[7]
     start_time = time.time()
     list_head = ListNode(-1, None)
     cur_node = list_head
@@ -270,47 +270,30 @@ def ll_solve_chrom(para):
         vcf_reader = VariantFile(vcf_filenames[i], 'r')
         for record in vcf_reader.fetch(chrom):
             idx += 1
-            cur_node = add_node(cur_node, i, Record(record, i), max_dist, max_inspro)
+            cur_node = add_node(cur_node, i, Record(record, i), max_dist, max_insratio, max_delratio)
     '''
     for fileidx in vcf_files:
+        if list_head.next == None:
+            cur_node = list_head
+        else:
+            cur_node = list_head.next ###
         for record in vcf_files[fileidx]:
-            sv_type = record.type
-            if sv_type == 'INS' or sv_type == 'DEL':
-                cur_node = add_node_indel(cur_node, fileidx, record, max_dist, max_inspro)
-            else:
-                cur_node = add_node(cur_node, fileidx, record, max_dist, max_inspro)
+            cur_node = add_node(cur_node, fileidx, record, max_dist, max_insratio, max_delratio)
 
     result = list()
     head = list_head.next
     idx = 0
     while head != None:
-        idx += 1
-        if head.represent.type == 'INS':
-            candidates = cal_can(head.variant_dict, diff_ratio_merging_INS)
-        elif head.represent.type == 'DEL':
-            candidates = cal_can(head.variant_dict, diff_ratio_merging_DEL)
-        else:
-            candidates = [[]]
-            for id in head.variant_dict:
-                candidates[0].append(head.variant_dict[id][0])
-                if len(head.variant_dict[id]) > 1:
-                    print('wrong merge on INV DUP BND')
-        #print(len(candidates))
-        for candidate in candidates: # candidate -> list(Record)
-            if len(candidate) < support:
-                continue
-            candidate_idx, cipos, ciend = cal_center(candidate)
-            candidate_record = candidate[candidate_idx]  # Record
+        if len(head.variant_dict) >= support:
+            candidate_idx, cipos, ciend = cal_center(head.variant_dict)
+            candidate_record = head.variant_dict[candidate_idx]  # Record
             annotation = solve_annotation(candidate_record.type, anno, candidate_record.start, candidate_record.end)  # dict{'gene_id' -> str}
             '''
             if candidate_record.type == 'TRA':
                 annotation = solve_annotation_tra(annotation_dict[candidate_record.chrom2], candidate_record.end, annotation)
                 print(annotation)
             '''
-            candidate_dict = dict()
-            for can in candidate:
-                candidate_dict[can.source] = can
-            result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, candidate_dict, annotation])
+            result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, head.variant_dict, annotation])
         head = head.next
     #print('finish %s in %s, total %dnodes'%(chrom, str(time.time() - start_time), len(result)))
     #print('finish %s at %s'%(chrom, str(time.time())))
@@ -333,47 +316,32 @@ def ll_solve_chrom2(para):
         vcf_reader = VariantFile(vcf_filenames[i], 'r')
         for record in vcf_reader.fetch(chrom):
             idx += 1
-            cur_node = add_node(cur_node, i, Record(record, i), max_dist, max_inspro)
+            cur_node = add_node(cur_node, i, Record(record, i), max_dist, max_insratio, max_delratio)
     '''
     for fileidx in vcf_files:
         for record in vcf_files[fileidx]:
             sv_type = record.type
             if sv_type == 'INS' or sv_type == 'DEL':
-                cur_node = add_node_indel(cur_node, fileidx, record, max_dist, max_inspro)
+                cur_node = add_node_indel(cur_node, fileidx, record, max_dist, max_insratio, max_delratio)
             else:
-                cur_node = add_node(cur_node, fileidx, record, max_dist, max_inspro)
+                cur_node = add_node(cur_node, fileidx, record, max_dist, max_insratio, max_delratio)
             #print_list(list_head)
 
     result = list()
     head = list_head.next
     idx = 0
     while head != None:
-        idx += 1
-        if head.represent.type == 'INS':
-            candidates = cal_can(head.variant_dict, 0.55)
-        elif head.represent.type == 'DEL':
-            candidates = cal_can(head.variant_dict, 0.45)
-        else:
-            candidates = [[]]
-            for id in head.variant_dict:
-                candidates[0].append(head.variant_dict[id][0])
-                if len(head.variant_dict[id]) > 1:
-                    print('wrong merge on INV DUP BND')
-        print(len(candidates))
-        for candidate in candidates: # candidate -> list(Record)
-            candidate_idx, cipos, ciend = cal_center(candidate)
-            candidate_record = candidate[candidate_idx]  # Record
-            annotation = solve_annotation(candidate_record.type, anno, candidate_record.start, candidate_record.end)  # dict{'gene_id' -> str}
-            '''
-            if candidate_record.type == 'TRA':
-                annotation = solve_annotation_tra(annotation_dict[candidate_record.chrom2], candidate_record.end, annotation)
-                print(annotation)
-            '''
-            candidate_dict = dict()
-            for can in candidate:
-                candidate_dict[can.source] = can
-            result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, candidate_dict, annotation])
+        candidate_idx, cipos, ciend = cal_center(head.variant_dict)
+        candidate_record = head.variant_dict[candidate_idx]  # Record
+        annotation = solve_annotation(candidate_record.type, anno, candidate_record.start, candidate_record.end)  # dict{'gene_id' -> str}
+        '''
+        if candidate_record.type == 'TRA':
+            annotation = solve_annotation_tra(annotation_dict[candidate_record.chrom2], candidate_record.end, annotation)
+            print(annotation)
+        '''
+        result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, head.variant_dict, annotation])
         head = head.next
+    
     print('finish %s in %s, total %dnodes'%(chrom, str(time.time() - start_time), len(result)))
     #print('finish %s at %s'%(chrom, str(time.time())))
     return result  # [[CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT, ANNOTATION], [], ...]
@@ -403,7 +371,9 @@ def main_ctrl(args):
 def main(args):
     start_time = time.time()
     max_dist = args.max_dist
-    max_inspro = 0.7
+    max_inspro = args.max_insratio
+    max_insratio = args.max_insratio
+    max_delratio = args.max_delratio
     chr_dict, sample_ids, contiginfo = parse_vcfs(args.input, args.IOthreads)
     annotation_dict = parse_annotation_file(args.annotation)
     pool = Pool(processes = args.threads)
@@ -414,7 +384,7 @@ def main(args):
                 anno = annotation_dict[chr]
             else:
                 anno = []
-            result.append(ll_solve_chrom([chr_dict[chr], chr, max_dist, max_inspro, anno, args.support, args.diff_ratio_merging_INS, args.diff_ratio_merging_DEL]))
+            result.append(ll_solve_chrom([chr_dict[chr], chr, max_dist, max_inspro, anno, args.support, args.max_insratio, args.max_delratio]))
     else:
         para = []
         for chr in chr_dict:
@@ -422,7 +392,7 @@ def main(args):
                 anno = annotation_dict[chr]
             else:
                 anno = []
-            para.append([chr_dict[chr], chr, max_dist, max_inspro, anno, args.support, args.diff_ratio_merging_INS, args.diff_ratio_merging_DEL])
+            para.append([chr_dict[chr], chr, max_dist, max_inspro, anno, args.support, args.max_insratio, args.max_delratio])
         result = pool.map(ll_solve_chrom, para)
 
     pool.close()
@@ -483,18 +453,22 @@ if __name__ == '__main__':
             type = int,
             default = 1,
             help = 'support vector number[%(default)s]')
-    parser.add_argument('--diff_ratio_merging_INS',
+    parser.add_argument('--max_insratio',
             type = float,
-            default = 0.3,
-            help = 'diff_ratio_merging_INS[%(default)s]')
-    parser.add_argument('--diff_ratio_merging_DEL',
+            default = 0.7,
+            help = 'max cluster ratio of ins ratio[%(default)s]')
+    parser.add_argument('--max_delratio',
             type = float,
-            default = 0.5,
-            help = 'diff_ratio_merging_DEL[%(default)s]')
+            default = 0.7,
+            help = 'max cluster ratio of del ratio[%(default)s]')
     parser.add_argument('--max_dist',
             type = int,
             default = 1000,
             help = 'Maximum distance[%(default)s]')
+    parser.add_argument('--max_ratio',
+            type = float,
+            default = 0.7,
+            help = 'Maximum ratio[%(default)s]')
     
     args = parser.parse_args(sys.argv[1:])
     if args.seperate_chrom:

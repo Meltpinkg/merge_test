@@ -1,5 +1,6 @@
 import os
 import sys
+from cuteSV_linkedList import parse_svtype
 # 1	10469	nssv14474157	C	<DUP>	.	.	DBVARID;SVTYPE=DUP;CIPOS=-100,100;CIEND=-100,100;IMPRECISE;END=23975;SVLEN=13507;EXPERIMENT=1;SAMPLE=NA12878;REGIONID=nsv3320972
 def parse_nstd(file):
     file = open(file + '.tmp', 'w')
@@ -105,8 +106,42 @@ def add_gt_to_nstd(laser_dict):
                     gt = item[2]
             file.write(line.strip() + ';GT=' + gt + '\n')
 
+def parse_nstd_tru():
+    file = open('nstd_merge.vcf', 'w')
+    svs = set()
+    with open('nstd162.GRCh37.variant_call.vcf', 'r') as f:
+        idx = 0
+        for line in f:
+            if line[0] == '#':
+                if line[1] == '#':
+                    file.write(line)
+                else:
+                    file.write(line.strip() + '\tFORMAT\tNULL\n')
+                continue
+            lineseq = line.strip().split('\t')
+            chrom1 = lineseq[0]
+            if chrom1 != '1':
+                break
+            sv_type = parse_svtype(lineseq[7].split('SVTYPE=')[1].split(';')[0])
+            pos = int(lineseq[1])
+            svlen = abs(int(lineseq[7].split(';SVLEN=')[1].split(';')[0]))
+            svend = abs(int(lineseq[7].split(';END=')[1].split(';')[0]))
+            if idx == 0:
+                idx = 1
+                file.write(line.strip() + '\tGT\t./.\n')
+                svs.add((sv_type, pos, svlen, svend))
+                continue
+            if (sv_type, pos, svlen, svend) in svs:
+                pass
+            else:
+                file.write(line.strip() + '\tGT\t./.\n')
+                svs.add((sv_type, pos, svlen, svend))
+    file.close()
+
 if __name__ == '__main__':
     #laser_dict = add_gt_from_laser()
     #add_gt_to_nstd(laser_dict)
-    parse_nstd(sys.argv[1])
-    os.system('sort -k 2,2n ' + sys.argv[1] + '.tmp > ' + sys.argv[1])
+    #parse_nstd(sys.argv[1])
+    #os.system('sort -k 2,2n ' + sys.argv[1] + '.tmp > ' + sys.argv[1])
+    parse_nstd_tru()
+
