@@ -54,7 +54,11 @@ def parse_vcf(para):
     # contigs
     contiginfo = dict()
     for i in range(len(vcf_reader.header.contigs)):
-        contiginfo[str(vcf_reader.header.contigs[i].name)] = int(vcf_reader.header.contigs[i].length)
+        try:
+            contiginfo[str(vcf_reader.header.contigs[i].name)] = int(vcf_reader.header.contigs[i].length)
+        except:
+            print('contig length not find')
+            contiginfo[str(vcf_reader.header.contigs[i].name)] = 0
     record_dict['contig'] = contiginfo
     # records
     for record in vcf_reader.fetch():
@@ -274,8 +278,12 @@ def ll_solve_chrom(para):
     '''
     for fileidx in vcf_files:
         for record in vcf_files[fileidx]:
-            sv_type = record.type
-            if sv_type == 'INS' or sv_type == 'DEL':
+            sv_type = record.type  # ['INS','DEL','INV','DUP','BND','ALU','LINE1','SVA']
+            if record.end == 0:
+                if sv_type != 'DEL':
+                    print('end=0, pass: ' + record.to_string())
+                continue
+            if 'INS' in sv_type or 'DEL' in sv_type:
                 cur_node = add_node_indel(cur_node, fileidx, record, max_dist, max_inspro)
             else:
                 cur_node = add_node(cur_node, fileidx, record, max_dist, max_inspro)
@@ -294,6 +302,7 @@ def ll_solve_chrom(para):
             for id in head.variant_dict:
                 candidates[0].append(head.variant_dict[id][0])
                 if len(head.variant_dict[id]) > 1:
+                    print(head.to_string())
                     print('wrong merge on INV DUP BND')
         #print(len(candidates))
         for candidate in candidates: # candidate -> list(Record)
@@ -403,7 +412,7 @@ def main_ctrl(args):
 def main(args):
     start_time = time.time()
     max_dist = args.max_dist
-    max_inspro = 0.7
+    max_inspro = args.max_inspro
     chr_dict, sample_ids, contiginfo = parse_vcfs(args.input, args.IOthreads)
     annotation_dict = parse_annotation_file(args.annotation)
     pool = Pool(processes = args.threads)
@@ -485,7 +494,7 @@ if __name__ == '__main__':
             help = 'support vector number[%(default)s]')
     parser.add_argument('--diff_ratio_merging_INS',
             type = float,
-            default = 0.3,
+            default = 0.4,
             help = 'diff_ratio_merging_INS[%(default)s]')
     parser.add_argument('--diff_ratio_merging_DEL',
             type = float,
@@ -494,6 +503,10 @@ if __name__ == '__main__':
     parser.add_argument('--max_dist',
             type = int,
             default = 1000,
+            help = 'Maximum distance[%(default)s]')
+    parser.add_argument('--max_inspro',
+            type = float,
+            default = 0.8,
             help = 'Maximum distance[%(default)s]')
     
     args = parser.parse_args(sys.argv[1:])

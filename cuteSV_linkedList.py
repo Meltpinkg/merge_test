@@ -2,9 +2,14 @@ class Record(object):
     def __init__(self, record, idx):
         self.source = idx
         self.name = record.id
-        self.type = parse_svtype(record.info['SVTYPE'])
+        self.type = 'BND' if record.info['SVTYPE'] == 'TRA' else record.info['SVTYPE']
         self.start = parse_to_int(record.pos)
-        if ('INS' in record.info['SVTYPE'] or 'DEL' in record.info['SVTYPE']) and 'SVLEN' in record.info:
+        if self.type not in ['INS','DEL','INV','DUP','BND']:
+            if 'INS' in record.alts[0]:
+                self.type = 'INS'
+            elif 'DEL' in record.alts[0]:
+                self.type = 'DEL'
+        if ('INS' in self.type or 'DEL' in self.type) and 'SVLEN' in record.info:
             self.end = abs(parse_to_int(record.info['SVLEN']))
         elif 'END' in record.info:
             self.end = parse_to_int(record.info['END'])
@@ -13,7 +18,7 @@ class Record(object):
                 self.end = parse_to_int(record.stop)
             except:
                 self.end = 0
-        if record.info['SVTYPE'] == 'BND' or record.info['SVTYPE'] == 'TRA':
+        if self.type == 'BND':
             tra_alt = str(record.alts[0])
             if tra_alt[0] == 'N':
                 if tra_alt[1] == '[':
@@ -52,7 +57,7 @@ class Record(object):
                 self.gt = str(record.samples[0]['GT'][0]) + '/' + str(record.samples[0]['GT'][1])
 
     def to_string(self):
-        return self.name + ', start: ' + str(self.start) + ', end: ' + str(self.end) + ', strand: ' + self.strand
+        return self.name + ', ' + self.type + ', start: ' + str(self.start) + ', end: ' + str(self.end) + ', strand: ' + self.strand
 
 
 class ListNode(object):
@@ -97,15 +102,14 @@ def parse_to_int(sth):
 '''
     cur, input -> Record
     max_dist [default = 1000]
-    max_inspro [default = 0.7]
     return True / False
 '''
 def check_is_same(cur, input, max_dist, max_inspro):
     #if input.type == cur.type and input.strand == cur.strand:
     if input.type == cur.type:
-        if abs(input.start - cur.start) < 1000:
+        if abs(input.start - cur.start) < max_dist:
             if input.type == 'INS' or input.type == 'DEL':
-                if 0.7 < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
+                if max_inspro < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
                     return True
             else:
                 if abs(input.end - cur.end) < max_dist:

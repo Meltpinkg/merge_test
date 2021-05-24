@@ -191,6 +191,21 @@ def output_result(semi_result, sample_ids, output_file):
                     SVTYPE = can_record.type)
             if anno_str != '':
                 info_list += ';' + anno_str
+        else:
+            sv_end = can_record.end
+            sv_len = can_record.end - can_record.start
+            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
+                    SUPP = len(item[5]),
+                    SUPP_ID = ','.join(supp_id),
+                    SUPP_VEC = supp_vec,
+                    SVTYPE = can_record.type, 
+                    SVLEN = sv_len, 
+                    END = sv_end)
+            if can_record.strand != '.':
+                info_list += ';STRAND=' + can_record.strand
+            if anno_str != '':
+                info_list += ';' + anno_str
+            #print(info_list)
         # calculate AF
         af = 0
         for i in range(len(sample_ids)):
