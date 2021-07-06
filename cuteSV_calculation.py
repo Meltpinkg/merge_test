@@ -22,7 +22,7 @@ def cal_center(node):
     start_dif = 0x3f3f3f3f
     for id in range(len(node)):
         if abs(node[id].start - r_start) < start_dif:
-            start_dif = node[id].start - r_start
+            start_dif = abs(node[id].start - r_start)
             r_id = id
     return r_id, cal_ci(start_list), cal_ci(end_list)
 

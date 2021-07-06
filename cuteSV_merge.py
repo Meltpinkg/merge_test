@@ -24,6 +24,8 @@ def index_vcf(filenames, threads, work_dir):
         args.work_dir += '/'
     if not os.path.exists(args.work_dir + 'index'):
         os.mkdir(args.work_dir + 'index')
+    else:
+        print('Index directory existed.')
     process_pool = Pool(processes = threads)
     vcf_filenames = []
     vcfgz_filenames = []

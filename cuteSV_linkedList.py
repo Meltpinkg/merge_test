@@ -209,9 +209,6 @@ def print_list(head):
         head = head.next
 
 
-def init_linkedlist():
-    vcf_filenames, vcfgz_filenames, chrom_set, chrom_cnt, contiginfo = pre_vcf(argv[0])
-
 def parse_svtype(sv_type):
     if 'DEL' in sv_type:
         return 'DEL'
