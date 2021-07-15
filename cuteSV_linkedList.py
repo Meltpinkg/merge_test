@@ -19,6 +19,37 @@ class Record(object):
             except:
                 self.end = 0
         if self.type == 'BND':
+            if 'CHR2' in record.info:
+                chrom2 = record.info['CHR2']
+            if 'END' in record.info:
+                end = parse_to_int(record.info['END'])
+            try:
+                alt = str(record.alts[0])
+                if alt[0] == ']':
+                    tra_type = ']]N'
+                    chrom2 = alt.split(':')[0][1:]
+                    end = int(alt.split(':')[1][:-2])
+                elif alt[0] == '[':
+                    tra_type = '[[N'
+                    chrom2 = alt.split(':')[0][1:]
+                    end = int(alt.split(':')[1][:-2])
+                else:
+                    # print(type(alt))
+                    if alt[1] == ']':
+                        tra_type = 'N]]'
+                        chrom2 = alt.split(':')[0][2:]
+                        end = int(alt.split(':')[1][:-1])
+                    else:
+                        tra_type = 'N[['
+                        chrom2 = alt.split(':')[0][2:]
+                        end = int(alt.split(':')[1][:-1])
+            except:
+                print(record)
+            self.chrom2 = chrom2
+            self.end = end
+            self.strand = tra_type
+        '''
+        if self.type == 'BND':
             tra_alt = str(record.alts[0])
             if tra_alt[0] == 'N':
                 if tra_alt[1] == '[':
@@ -36,15 +67,15 @@ class Record(object):
             self.chrom2 = tra_alt.split(':')[0]
             self.end = int(tra_alt.split(':')[1])
             self.strand = tra_type
+        '''
         self.chrom1 = record.chrom
-        if record.info['SVTYPE'] != 'TRA' and record.info['SVTYPE'] != 'BND':
+        self.strand = '.'
+        if self.type != 'BND':
             self.chrom2 = record.chrom
             if 'STRAND' in record.info:
                 self.strand = record.info['STRAND']
             elif 'STRANDS' in record.info:
                 self.strand = record.info['STRANDS']
-            else:
-                self.strand = '.'
         if isinstance(self.strand, list) or isinstance(self.strand, tuple):
             self.strand = str(self.strand[0])
         self.ref = record.ref
@@ -106,6 +137,10 @@ def parse_to_int(sth):
 '''
 def check_is_same(cur, input, max_dist, max_inspro):
     #if input.type == cur.type and input.strand == cur.strand:
+    if 1074800 < input.start < 1075400 and input.type == 'DEL':
+        print('check')
+        print(cur.to_string())
+        print(input.to_string())
     if input.type == cur.type:
         if abs(input.start - cur.start) < max_dist:
             if input.type == 'INS' or input.type == 'DEL':
@@ -114,8 +149,9 @@ def check_is_same(cur, input, max_dist, max_inspro):
             else:
                 if abs(input.end - cur.end) < max_dist:
                     return True
+    if 1074800 < input.start < 1075400 and input.type == 'DEL':
+        print('False')
     return False
-
 
 '''
     head -> ListNode

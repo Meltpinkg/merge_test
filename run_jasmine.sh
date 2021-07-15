@@ -13,12 +13,12 @@ run_jas() {
 	for i in {CHM1,CHM13,HG00268,HG00514,HG00733,HG01352,HG02059,HG02106,HG02818,HG04217,HX1,NA12878,NA19240,NA19434}
 	do
 		echo $i
-		jasmine file_list=input/$2/$i.fofn out_file=output_sample/jasmine_$i\_$2.vcf min_support=$1 
+		jasmine file_list=input/$2/$i.fofn out_file=output_sample/jasmine_$i\_$2.vcf min_support=$1
 	done
 	ls output_sample/jasmine_*_$2.vcf > input/jas_samples_$2.fofn
-	#wc -l input/jas_samples_$2.fofn
+	wc -l input/jas_samples_$2.fofn
 
-	jasmine file_list=input/jas_samples_$2.fofn out_file=output419/jasmine_samples_$2.vcf
+	jasmine file_list=input/jas_samples_$2.fofn out_file=output74/jasmine_samples_$2.vcf --output_genotypes
 	sortandindex output419/jasmine_samples_$2.vcf
 	#wc -l output419/jasmine_samples_$2.vcf
 }
@@ -68,9 +68,9 @@ compress_type() {
 	echo 'write to answer'
 }
 
-compress_coverage
+#compress_coverage
 #compress_type 30x
 
-#run_jas 3 30x
+run_jas 3 30x
 #rm cmp_jas
 #truvari bench -b benchmark/nstd_merge.vcf.gz -c output419/jasmine_samples_30x.vcf.gz -o cmp_jas -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
