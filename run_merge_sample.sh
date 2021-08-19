@@ -3,11 +3,11 @@ run_src() {
 	for i in {CHM1,CHM13,HG00268,HG00514,HG00733,HG01352,HG02059,HG02106,HG02818,HG04217,HX1,NA12878,NA19240,NA19434}
 	do
 		echo $i
-		python src/cuteSV_merge.py input/$2/$i.fofn $3/merged_$i\_$2.vcf ./ -t 1 -S $1 --diff_ratio_merging_INS 0.3 --diff_ratio_merging_DEL 0.5 --max_inspro 0.9
+		python src/cuteSV_merge.py input/$2/$i.fofn $3/merged_$i\_$2.vcf ./ -t 1 -S $1 -diff_ratio_merging_INS 0.8 -diff_ratio_merging_DEL 0.5 -max_inspro 0.5
 	done
 	ls $3/merged_*_$2.vcf > input/mer_samples_$2.fofn
 	wc -l input/mer_samples_$2.fofn	
-	python src/cuteSV_merge.py input/mer_samples_$2.fofn $3/merged_samples_$2.vcf ./ -t 1 --diff_ratio_merging_INS 0.3 --diff_ratio_merging_DEL 0.2 --max_inspro 0.8
+	python src/cuteSV_merge.py input/mer_samples_$2.fofn $3/merged_samples_$2.vcf ./ -t 1 -diff_ratio_merging_INS 0.3 -diff_ratio_merging_DEL 0.2 -max_inspro 0.5
 
 	bgzip -c $3/merged_samples_$2.vcf > $3/merged_samples_$2.vcf.gz
 	tabix $3/merged_samples_$2.vcf.gz
@@ -70,15 +70,14 @@ parse_nstd() {
 # output benchmark of $1(*.vcf)
 compress_type() {
 	#compress_type vcf
-	run_src 3 $1
-	echo 'finish merge'
-	parse_svtype merged_samples_$1.vcf
+	run_src 3 30x $1
+	parse_svtype $1/merged_samples_30x.vcf
 	rm -r cmp_ins/ cmp_del/ cmp_inv/ cmp_dup/ cmp_all/
 	truvari bench -b benchmark/nstd_INS.vcf.gz -c INS.vcf.gz -o cmp_ins -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
 	truvari bench -b benchmark/nstd_DEL.vcf.gz -c DEL.vcf.gz -o cmp_del -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
 	truvari bench -b benchmark/nstd_INV.vcf.gz -c INV.vcf.gz -o cmp_inv -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
 	truvari bench -b benchmark/nstd_DUP.vcf.gz -c DUP.vcf.gz -o cmp_dup -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-	truvari bench -b benchmark/nstd_merge.vcf.gz -c merged_samples_$1.vcf.gz -o cmp_all -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c $1/merged_samples_30x.vcf.gz -o cmp_all -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
 	python truvari/ss.py cmp_ins/summary.txt cmp_del/summary.txt cmp_inv/summary.txt cmp_dup/summary.txt cmp_all/summary.txt answer.txt
 	echo 'write to answer'
 }
@@ -118,8 +117,8 @@ compress_svlength() {
 #run_src 3 30x
 #rm -r cmp_mer/
 #truvari bench -b benchmark/nstd_merge.vcf.gz -c output419/merged_samples_30x.vcf.gz -o cmp_mer -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-#compress_type 30x
-#compress_coverage output74_1
+#compress_type $1
+compress_coverage $1
 #compress_svlength
 #truvari bench -b benchmark/nstd_merge.vcf.gz -c output419/merged0_samples.vcf.gz -o benchmark/cmp_merge -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
 #python src/parse_truvari.py benchmark/cmp_merge
@@ -140,3 +139,19 @@ compress_sv() {
 
 #compress_sv output419/jasmine_samples_30x.vcf.gz
 #compress_svlength
+:<<!
+run_src() {
+	# run_src support_num coverage folder
+	for i in {CHM1,CHM13,HG00268,HG00514,HG00733,HG01352,HG02059,HG02106,HG02818,HG04217,HX1,NA12878,NA19240,NA19434}
+	do
+		echo $i
+		python src/cuteSV_merge.py input/$2/$i.fofn $3/merged_$i\_$2.vcf ./ -t 1 -S $1 -diff_ratio_merging_INS 0.3 -diff_ratio_merging_DEL 0.5 -max_inspro 0.9
+	done
+	ls $3/merged_*_$2.vcf > input/mer_samples_$2.fofn
+	wc -l input/mer_samples_$2.fofn	
+	python src/cuteSV_merge.py input/mer_samples_$2.fofn $3/merged_samples_$2.vcf ./ -t 1 -diff_ratio_merging_INS 0.3 -diff_ratio_merging_DEL 0.2 -max_inspro 0.8
+
+	bgzip -c $3/merged_samples_$2.vcf > $3/merged_samples_$2.vcf.gz
+	tabix $3/merged_samples_$2.vcf.gz
+}
+!

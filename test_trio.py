@@ -36,8 +36,9 @@ def check(son, fa, ma):
             return False
     return True
 
-def main(vcf_file):
+def main(vcf_file, output_file):
     vcf_reader = VariantFile(vcf_file, 'r')
+    bcf_out = VariantFile(output_file, 'w', header=vcf_reader.header)
     '''
     sample1 = vcf_reader.header.samples[0]
     sample2 = vcf_reader.header.samples[1]
@@ -54,9 +55,11 @@ def main(vcf_file):
         res = check(son, father, mother)
         if res == False:
             cnt += 1
+            bcf_out.write(record)
     print(cnt)
     print(tot)
+    print(cnt / tot)
     return cnt, tot
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2])

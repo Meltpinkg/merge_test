@@ -1,4 +1,5 @@
-from cuteSV_calculation import cal_center, cal_ci, cal_can
+#from cuteSV_calculation import cal_center, cal_ci, cal_can
+from cuteSV_calculation import *
 from cuteSV_linkedList import add_node, add_node_indel, print_list, ListNode, Record
 from cuteSV_output import output_result, solve_annotation, generate_header
 from pysam import VariantFile
@@ -322,10 +323,25 @@ def ll_solve_chrom(para):
     idx = 0
     while head != None:
         idx += 1
+        '''
+        #if 1074800 < head.start < 1075400 and head.represent.type == 'DEL': 1223837
+        #if 10300 < head.start < 10900 and head.represent.type == 'INS':
+        if 1223800 < head.start < 1224000 and head.represent.type == 'DEL':
+            print('~~~')
+            for x in head.variant_dict:
+                for r in head.variant_dict[x]:
+                    print(r.to_string())
+            if head.represent.type == 'INS':
+                candidates = cal_can(head.variant_dict, diff_ratio_merging_INS, 1)
+            elif head.represent.type == 'DEL':
+                candidates = cal_can(head.variant_dict, diff_ratio_merging_DEL, 1)
+        '''
         if head.represent.type == 'INS':
-            candidates = cal_can(head.variant_dict, diff_ratio_merging_INS)
+            #candidates = cal_can(head.variant_dict, diff_ratio_merging_INS, 0)
+            candidates = cal_can_greedy(head.variant_dict, max_dist, max_inspro, 0)
         elif head.represent.type == 'DEL':
-            candidates = cal_can(head.variant_dict, diff_ratio_merging_DEL)
+            #candidates = cal_can(head.variant_dict, diff_ratio_merging_DEL, 0)
+            candidates = cal_can_greedy(head.variant_dict, max_dist, max_inspro, 0)
         else:
             candidates = [[]]
             for id in head.variant_dict:
@@ -333,11 +349,13 @@ def ll_solve_chrom(para):
                 if len(head.variant_dict[id]) > 1:
                     print(head.to_string())
                     print('wrong merge on INV DUP BND')
-        if 1074800 < candidates[0][0].start < 1075400:
+        '''
+        if 1223800 < head.start < 1224000:
             for candidate in candidates:
                 print('===')
                 for r in candidate:
                     print(r.to_string())
+        '''
         for candidate in candidates: # candidate -> list(Record)
             if len(candidate) < support:
                 continue
@@ -423,8 +441,8 @@ def ll_solve_chrom2(para):
 # resolve_chrom
 def main_ctrl(args):
     start_time = time.time()
-    max_dist = 1000
-    max_inspro = 0.7
+    max_dist = args.max_dist
+    max_inspro = args.max_inspro
     filenames = index_vcf(args.input, args.threads, args.work_dir + 'index/')
     annotation_dict = parse_annotation_file(args.annotation)
     sample_ids, contiginfo = resolve_contigs(filenames, args.IOthreads)

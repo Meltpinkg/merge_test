@@ -86,6 +86,8 @@ class Record(object):
                 self.gt = './.'
             else:
                 self.gt = str(record.samples[0]['GT'][0]) + '/' + str(record.samples[0]['GT'][1])
+        else:
+            self.gt = './.'
 
     def to_string(self):
         return self.name + ', ' + self.type + ', start: ' + str(self.start) + ', end: ' + str(self.end) + ', strand: ' + self.strand
@@ -96,16 +98,25 @@ class ListNode(object):
         if record == None:
             self.variant_dict = dict()  # {id -> Record}
             self.represent = None
+            self.start = 0
+            self.end = 0
+            self.cnt = 0
         else:
             self.variant_dict = dict()
             self.variant_dict[id] = [record]
             self.represent = record
+            self.start = record.start
+            self.end = record.end
+            self.cnt = 1
         self.pre = pre
         self.next = next
     def add(self, id, record):
         if id not in self.variant_dict:
             self.variant_dict[id] = list()
         self.variant_dict[id].append(record)
+        self.start = (self.start * self.cnt + record.start) / (self.cnt + 1)
+        self.end = (self.end * self.cnt + record.end) / (self.cnt + 1)
+        self.cnt += 1
         # self.variant_dict[id] = record
     def to_string(self):
         string = 'List size = ' + str(len(self.variant_dict)) + ', '
@@ -135,13 +146,13 @@ def parse_to_int(sth):
     max_dist [default = 1000]
     return True / False
 '''
-def check_is_same(cur, input, max_dist, max_inspro):
+def check_is_same(cur, input, max_dist, max_inspro, cur_type):
     #if input.type == cur.type and input.strand == cur.strand:
-    if 1074800 < input.start < 1075400 and input.type == 'DEL':
+    '''if 1074800 < input.start < 1075400 and input.type == 'DEL':
         print('check')
         print(cur.to_string())
-        print(input.to_string())
-    if input.type == cur.type:
+        print(input.to_string())'''
+    if input.type == cur_type:
         if abs(input.start - cur.start) < max_dist:
             if input.type == 'INS' or input.type == 'DEL':
                 if max_inspro < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
@@ -149,8 +160,8 @@ def check_is_same(cur, input, max_dist, max_inspro):
             else:
                 if abs(input.end - cur.end) < max_dist:
                     return True
-    if 1074800 < input.start < 1075400 and input.type == 'DEL':
-        print('False')
+    '''if 1074800 < input.start < 1075400 and input.type == 'DEL':
+        print('False')'''
     return False
 
 '''
@@ -192,7 +203,7 @@ def add_node(head, id, record, max_dist, max_inspro):
         return node
     cur = head
     while cur != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro) and id not in cur.variant_dict:
+        if check_is_same(cur.represent, record, max_dist, max_inspro, cur.represent.type) and id not in cur.variant_dict:
             cur.add(id, record)
             return cur
         if cur.represent.start - record.start > 2 * max_dist:  # cannot merge
@@ -201,7 +212,7 @@ def add_node(head, id, record, max_dist, max_inspro):
         #print('next')
     cur = head.pre
     while cur.represent != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro) and id not in cur.variant_dict:
+        if check_is_same(cur.represent, record, max_dist, max_inspro, cur.represent.type) and id not in cur.variant_dict:
             cur.add(id, record)
             return cur
         if record.start - cur.represent.start > 2 * max_dist:
@@ -219,19 +230,19 @@ def add_node_indel(head, id, record, max_dist, max_inspro):
         return node
     cur = head
     while cur != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro):
+        if check_is_same(cur, record, max_dist, max_inspro, cur.represent.type):
             cur.add(id, record)
             return cur
-        if cur.represent.start - record.start > 2 * max_dist:  # cannot merge
+        if cur.start - record.start > 2 * max_dist:  # cannot merge
             break
         cur = cur.next
         #print('next')
     cur = head.pre
     while cur.represent != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro):
+        if check_is_same(cur, record, max_dist, max_inspro, cur.represent.type):
             cur.add(id, record)
             return cur
-        if record.start - cur.represent.start > 2 * max_dist:
+        if record.start - cur.start > 2 * max_dist:
             break
         cur = cur.pre
         #print('pre')
