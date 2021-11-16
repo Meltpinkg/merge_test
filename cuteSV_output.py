@@ -119,15 +119,15 @@ def parse_annotation_dict(anno):
     return str
 
 # add semi_result into output_file in vcf format
-def output_result(semi_result, sample_ids, output_file):
+def output_result(semi_result, samples_num, output_file):
     file = open(output_file, 'a')
     for item in semi_result:  # [CHROM, POS, CANDIDATE_RECORD, CIPOS, CILEN, LIST(RECORD), ANNOTATION]
         supp_vec = ''
-        supp_id = []
-        for i in range(len(sample_ids)):
+        #supp_id = []
+        for i in range(samples_num):
             if i in item[5]:
                 supp_vec += '1'
-                supp_id.append(sample_ids[i])
+                #supp_id.append(sample_ids[i])
             else:
                 supp_vec += '0'
         can_record = item[2]
@@ -140,9 +140,9 @@ def output_result(semi_result, sample_ids, output_file):
         if 'INS' in can_record.type:
             sv_len = can_record.end
             sv_end = can_record.start
-            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CILEN={CILEN};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
+            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CILEN={CILEN};SUPP={SUPP};SUPP_VEC={SUPP_VEC}".format(
                     SUPP = len(item[5]),
-                    SUPP_ID = ','.join(supp_id),
+                    #SUPP_ID = ','.join(supp_id),
                     SUPP_VEC = supp_vec,
                     SVTYPE = can_record.type, 
                     SVLEN = sv_len, 
@@ -156,9 +156,8 @@ def output_result(semi_result, sample_ids, output_file):
         elif 'DEL' in can_record.type:
             sv_len = -can_record.end
             sv_end = can_record.start + can_record.end
-            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CILEN={CILEN};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
+            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};CIPOS={CIPOS};CILEN={CILEN};SUPP={SUPP};SUPP_VEC={SUPP_VEC}".format(
                     SUPP = len(item[5]),
-                    SUPP_ID = ','.join(supp_id),
                     SUPP_VEC = supp_vec,
                     SVTYPE = can_record.type, 
                     SVLEN = sv_len, 
@@ -170,11 +169,11 @@ def output_result(semi_result, sample_ids, output_file):
             if anno_str != '':
                 info_list += ';' + anno_str
         elif 'INV' in can_record.type or 'DUP' in can_record.type:
-            sv_len = can_record.end - can_record.start + 1
-            sv_end = can_record.end
-            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
+            #sv_len = can_record.end - can_record.start + 1
+            sv_len = can_record.end
+            sv_end = can_record.end + can_record.start - 1
+            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};SUPP={SUPP};SUPP_VEC={SUPP_VEC}".format(
                     SUPP = len(item[5]),
-                    SUPP_ID = ','.join(supp_id),
                     SUPP_VEC = supp_vec,
                     SVTYPE = can_record.type, 
                     SVLEN = sv_len, 
@@ -184,9 +183,10 @@ def output_result(semi_result, sample_ids, output_file):
             if anno_str != '':
                 info_list += ';' + anno_str
         elif can_record.type == 'BND':
-            info_list = "SVTYPE={SVTYPE};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
+            info_list = "SVTYPE={SVTYPE};END={END};CHR2={CHR2};SUPP={SUPP};SUPP_VEC={SUPP_VEC}".format(
                     SUPP = len(item[5]),
-                    SUPP_ID = ','.join(supp_id),
+                    END = can_record.end,
+                    CHR2 = can_record.chrom2,
                     SUPP_VEC = supp_vec,
                     SVTYPE = can_record.type)
             if anno_str != '':
@@ -194,9 +194,8 @@ def output_result(semi_result, sample_ids, output_file):
         else:
             sv_end = can_record.end
             sv_len = can_record.end - can_record.start
-            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};SUPP={SUPP};SUPP_VEC={SUPP_VEC};SUPP_ID={SUPP_ID}".format(
+            info_list = "SVTYPE={SVTYPE};SVLEN={SVLEN};END={END};SUPP={SUPP};SUPP_VEC={SUPP_VEC}".format(
                     SUPP = len(item[5]),
-                    SUPP_ID = ','.join(supp_id),
                     SUPP_VEC = supp_vec,
                     SVTYPE = can_record.type, 
                     SVLEN = sv_len, 
@@ -208,13 +207,13 @@ def output_result(semi_result, sample_ids, output_file):
             #print(info_list)
         # calculate AF
         af = 0
-        for i in range(len(sample_ids)):
+        for i in range(samples_num):
             if i in item[5]:
                 if item[5][i].gt == '0/1':
                     af += 1
                 elif item[5][i].gt == '1/1':
                     af += 2
-        af = af / len(sample_ids) / 2
+        af = af / samples_num / 2
         info_list += ';AF=' + str(round(af, 4))
         file.write("{CHR}\t{POS}\t{ID}\t{REF}\t{ALT}\t{QUAL}\t{PASS}\t{INFO}\t{FORMAT}\t".format(
             CHR = can_record.chrom1, 
@@ -227,9 +226,17 @@ def output_result(semi_result, sample_ids, output_file):
             INFO = info_list, 
             FORMAT = "GT:RAL:AAL:CO",
             ))
+        '''
         for i in range(len(sample_ids)):
             if i in item[5]:
                 file.write("%s:%s:%s:"%(item[5][i].gt, item[5][i].ref.replace(':', '_'), (','.join(item[5][i].alt)).replace(':', '_')))
+                file.write("%s_%d-%s_%d\t"%(item[5][i].chrom1, item[5][i].start, item[5][i].chrom2, item[5][i].end))
+            else:
+                file.write("./.:NAN:NAN:NAN\t")
+        '''
+        for i in range(samples_num):
+            if i in item[5]:
+                file.write("%s:"%(item[5][i].gt))
                 file.write("%s_%d-%s_%d\t"%(item[5][i].chrom1, item[5][i].start, item[5][i].chrom2, item[5][i].end))
             else:
                 file.write("./.:NAN:NAN:NAN\t")
@@ -266,7 +273,7 @@ def generate_header(file, contiginfo, sample_ids):
     file.write("##INFO=<ID=STRAND,Number=A,Type=String,Description=\"Strand orientation of the adjacency in BEDPE format (DEL:+-, DUP:-+, INV:++/--)\">\n")
     #file.write("##INFO=<ID=RNAMES,Number=.,Type=String,Description=\"Supporting read names of SVs (comma separated)\">\n")
     file.write("##INFO=<ID=SUPP,Number=1,Type=Integer,Description=\"Number of samples supporting the variant\">\n")
-    file.write("##INFO=<ID=SUPP_ID,Number=.,Type=String,Description=\"Samples supporting the variant\">\n")
+    #file.write("##INFO=<ID=SUPP_ID,Number=.,Type=String,Description=\"Samples supporting the variant\">\n")
     file.write("##INFO=<ID=SUPP_VEC,Number=1,Type=String,Description=\"Samples id supporting the variant\">\n")
     file.write("##INFO=<ID=AF,Number=1,Type=Float,Description=\"Allele frequency\">\n")
     file.write("##FILTER=<ID=q5,Description=\"Quality below 5\">\n")

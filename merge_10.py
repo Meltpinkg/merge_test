@@ -22,13 +22,11 @@
 #               佛祖保佑         永无BUG
 #####################################################
 #from cuteSV_calculation import cal_center, cal_ci, cal_can
-from numpy.core.fromnumeric import sort
 from cuteSV_calculation import *
 from cuteSV_linkedList import add_node, add_node_indel, print_list, ListNode, Record
 from cuteSV_output import output_result, solve_annotation, generate_header
 from pysam import VariantFile
 from multiprocessing import Pool
-from heapq import *
 import os
 import sys
 import time
@@ -38,7 +36,7 @@ def create_index(line, gz_filename):
     try:
         cmd = 'bgzip -c ' + line + ' > ' + gz_filename
         os.system(cmd)
-        os.system('tabix -p vcf ' + gz_filename)
+        os.system('tabix ' + gz_filename)
     except Exception as ee:
         print(ee)
 
@@ -51,117 +49,28 @@ def index_vcf(filenames, threads, work_dir):
     if not os.path.exists(work_dir + 'index'):
         os.mkdir(work_dir + 'index')
     else:
-        print('Index directory existed.')
+        print('ERROR: Index directory existed.')
+        exit(0)
     process_pool = Pool(processes = threads)
-    vcf_filenames = []
     vcfgz_filenames = []
     with open(filenames, 'r') as f:
         for line in f:
             line = line.strip()
-            vcf_filenames.append(line)
-            filename = line.split('/')[-1]
-            if filename[-3:] == 'vcf':
-                filename += '.gz'
+            if line[-3:] == 'vcf':
                 gz_filename = work_dir + line.split('/')[-1] + '.gz'
                 vcfgz_filenames.append(gz_filename)
                 process_pool.apply_async(create_index, (line, gz_filename))
-            elif filename[-6:] == 'vcf.gz':
+            elif line[-6:] == 'vcf.gz':
                 vcfgz_filenames.append(line)
             else:
-                print('input error')
+                print('input file type error')
                 continue
-            
+
     process_pool.close()
     process_pool.join()
     print('finish indexing in %s'%(round(time.time() - start_time, 6)))
     #return vcfgz_filenames, chrom_cnt, contiginfo, sample_ids
     return vcfgz_filenames
-
-# parse vcf and return {chr -> list(Record)}
-def parse_vcf(para):
-    filename = para[0]
-    idx = para[1]
-    vcf_reader = VariantFile(filename, 'r')
-    record_dict = dict()
-    # contigs
-    contiginfo = dict()
-    for i in range(len(vcf_reader.header.contigs)):
-        try:
-            contiginfo[str(vcf_reader.header.contigs[i].name)] = int(vcf_reader.header.contigs[i].length)
-        except:
-            print('contig length not find')
-            contiginfo[str(vcf_reader.header.contigs[i].name)] = 0
-    record_dict['contig'] = contiginfo
-    # records
-    for record in vcf_reader.fetch():
-        chr = record.chrom
-        svtype = 'BND' if record.info['SVTYPE'] == 'TRA' else record.info['SVTYPE']
-        if chr not in record_dict:
-            record_dict[chr] = dict()
-        if svtype not in record_dict[chr]:
-            record_dict[chr][svtype] = []
-        record_dict[chr][svtype].append(Record(record, idx))
-    # sample_id
-    record_dict['sample'] = vcf_reader.header.samples[0]
-    #print(record_dict.keys())
-    return record_dict
-
-# parse vcfs and return {chr -> {fileidx -> List(Record)}}
-def parse_vcfs(filenames, threads):
-    #print('start parse vcfs...')
-    start_time = time.time()
-    pool = Pool(processes = threads)
-    file_dict = dict()
-    idx = 0
-    with open(filenames, 'r') as f:
-        for filename in f:
-            file_dict[idx] = pool.map_async(parse_vcf, [(filename.strip(), idx)])
-            idx += 1
-    pool.close()
-    pool.join()
-    #print(file_dict.keys())
-    chr_dict = dict()
-    chr_cnt = dict()
-    sample_temp = ['' for i in range(idx)]
-    contiginfo = dict()
-    for fileidx in file_dict:
-        records = file_dict[fileidx].get()[0]  #{chr -> svtype -> List(Record)}
-        sample_temp[fileidx] = records['sample']
-        contig_temp = records['contig']
-        records.pop('sample')
-        records.pop('contig')
-        for chr in records:
-            if chr not in chr_dict:
-                chr_dict[chr] = dict()
-                chr_cnt[chr] = 0
-            if chr not in contiginfo:
-                contiginfo[chr] = contig_temp[chr]
-            for svtype in records[chr]:
-                if fileidx == 13 and chr == '2' and svtype == 'LINE1':
-                    print('!!')
-                    print(records[chr][svtype])
-                if svtype not in chr_dict[chr]:
-                    chr_dict[chr][svtype] = dict()
-                chr_dict[chr][svtype][fileidx] = records[chr][svtype]
-                chr_cnt[chr] += len(records[chr][svtype])
-    order = sorted(chr_cnt.items(), key=lambda x:x[1], reverse=True) # List
-    
-    #print(contiginfo)
-    #print(chr_dict.keys())
-    sample_set = set()
-    sample_ids = list()
-    for sample_id in sample_temp:
-        temp_sample_id = sample_id
-        temp_idx = 0
-        while temp_sample_id in sample_set:
-            temp_sample_id = sample_id + '_' + str(temp_idx)
-            temp_idx += 1
-        sample_ids.append(temp_sample_id)
-        sample_set.add(temp_sample_id)
-    #print(order)
-    #print(sample_ids)
-    #print('finish parsing in %s'%(str(time.time() - start_time)))
-    return chr_dict, sample_ids, contiginfo, order
 
 # all variants on the chrom
 def resolve_chrom(filenames, output, chrom, sample_ids, threads, max_dist, max_inspro, seperate_svtype, anno, support, diff_ratio_merging_INS, diff_ratio_merging_DEL):
@@ -180,7 +89,7 @@ def resolve_chrom(filenames, output, chrom, sample_ids, threads, max_dist, max_i
     else:
         result = solve_chrom1(record_dict, max_dist, max_inspro, anno, support, diff_ratio_merging_INS, diff_ratio_merging_DEL)
     result = sorted(result, key = lambda x:(x[0], int(x[1])))
-    output_result(result, len(sample_ids), output)
+    output_result(result, sample_ids, output)
     print('finish resolving %s, %d in %s'%(chrom, len(result), round(time.time() - start_time, 4)))
 
 def parse_vcf_chrom(para):
@@ -322,42 +231,10 @@ def parse_annotation_file(annotation_file):
     print(time.time() - start_time)
     return annotation_dict
 
-# vcf_files->dict{fileidx->list(Record)}  only one svtype
-# return list[]
-def first_sort(vcf_files, max_dist, filenum):
-    heap = []
-    ans = []
-    start_down = 0
-    start_up = 0
-    ratio = 1.6
-    record_pointer = [0 for i in range(filenum)]
-    #print(vcf_files.keys())
-    for fileidx in vcf_files:
-        heappush(heap, vcf_files[fileidx][0])
-    while len(heap) > 0:
-        head = heappop(heap) # Record
-        if len(ans) == 0 or (abs(head.start - start_down) > max_dist * ratio and abs(head.start - start_up) > max_dist * ratio):
-            #ans.append([head])
-            ans.append(dict())
-            ans[-1][head.source] = [head]
-            start_down = head.start
-            start_up = head.start
-        else:
-            #ans[-1].append(head)
-            if head.source in ans[-1]:
-                ans[-1][head.source].append(head)
-            else:
-                ans[-1][head.source] = [head]
-            start_down = min(start_down, head.start)
-            start_up = max(start_up, head.start)
-        #print(head.source)
-        record_pointer[head.source] += 1
-        if record_pointer[head.source] < len(vcf_files[head.source]):
-            heappush(heap, vcf_files[head.source][record_pointer[head.source]])
-    return ans
 
-def ll_solve_chrom_map(para):
+def ll_solve_chrom(para):
     chrom = para[1]
+    #print('start %s at %s'%(chrom, str(time.time())))
     vcf_files = para[0]
     max_dist = para[2]
     max_inspro = para[3]
@@ -365,60 +242,9 @@ def ll_solve_chrom_map(para):
     support = para[5]
     diff_ratio_merging_INS = para[6]
     diff_ratio_merging_DEL = para[7]
-    svtype = para[8]
-    filenum = para[9]
-    papa = para[10]
     start_time = time.time()
-    sort_ans = first_sort(vcf_files, max_dist, filenum)
-    #print('finish sorting in %s'%(str(time.time() - start_time)))
-    result = list()
-    idx = 0
-    for node in sort_ans:
-        idx += 1
-        if svtype == 'INS':
-            candidates = cal_can_INS(node, max_dist, max_inspro, 0)
-        elif svtype == 'DEL':
-            candidates = cal_can_DEL(node, max_dist, max_inspro, 0)
-        elif svtype == 'INV':
-            candidates = cal_can_INV(node, max_dist, max_inspro, 0)
-        elif svtype == 'DUP':
-            candidates = cal_can_DUP(node, max_dist, max_inspro, 0)
-        else:
-            candidates = cal_can_BND(node, max_dist, max_inspro, 0)
-        for candidate in candidates: # candidate -> list(Record)
-            if len(candidate) < support:
-                continue
-            candidate_idx, cipos, ciend = cal_center(candidate)
-            candidate_record = candidate[candidate_idx]  # Record
-            annotation = solve_annotation(candidate_record.type, anno, candidate_record.start, candidate_record.end)  # dict{'gene_id' -> str}
-            candidate_dict = dict()
-            for can in candidate:
-                candidate_dict[can.source] = can
-            result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, candidate_dict, annotation])
-    #print('finish %s-%s in %s, total %dnodes'%(chrom, svtype, str(time.time() - start_time), len(result)))
-    #print('finish %s at %s'%(chrom, str(time.time())))
-    output_result(result, filenum, 'temporary/' + chrom + '_' + svtype)
-    print('finish %s-%s in %s, total %dnodes'%(chrom, svtype, str(time.time() - start_time), len(result)))
-    #return result  # [[CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT, ANNOTATION], [], ...]
-
-def ll_solve_chrom(vcf_files, chrom, max_dist, max_inspro, anno, support, diff_ratio_merging_INS, diff_ratio_merging_DEL, svtype, filenum, papa):
-    '''
-    print(type(para))
-    print(len(para))
-    print(para[1:])
-    chrom = para[1]
-    vcf_files = para[0]
-    max_dist = para[2]
-    max_inspro = para[3]
-    anno = para[4]
-    support = para[5]
-    diff_ratio_merging_INS = para[6]
-    diff_ratio_merging_DEL = para[7]
-    svtype = para[8]
-    filenum = para[9]
-    papa = para[10]
-    '''
-    start_time = time.time()
+    list_head = ListNode(-1, None)
+    cur_node = list_head
     '''
     for i in range(len(vcf_filenames)):
         idx = 0
@@ -426,26 +252,58 @@ def ll_solve_chrom(vcf_files, chrom, max_dist, max_inspro, anno, support, diff_r
         for record in vcf_reader.fetch(chrom):
             idx += 1
             cur_node = add_node(cur_node, i, Record(record, i), max_dist, max_inspro)
+    '''
     for fileidx in vcf_files:
         for record in vcf_files[fileidx]:
             sv_type = record.type  # ['INS','DEL','INV','DUP','BND','ALU','LINE1','SVA']
+            '''
+            if 'INS' in sv_type or 'DEL' in sv_type:
+                cur_node = add_node_indel(cur_node, fileidx, record, max_dist, max_inspro)
+            else:
+                cur_node = add_node(cur_node, fileidx, record, max_dist, max_inspro)
+            '''
             cur_node = add_node_indel(cur_node, fileidx, record, max_dist, max_inspro)
-    '''
-    sort_ans = first_sort(vcf_files, max_dist, filenum)
-    #print('finish sorting in %s'%(str(time.time() - start_time)))
     result = list()
+    head = list_head.next
     idx = 0
-    #while head != None:
-    for node in sort_ans:
-        #print(node)
+    while head != None:
         idx += 1
         #if 1074800 < head.start < 1075400 and head.represent.type == 'DEL': 1223837
-        if svtype == 'INS':
-            candidates = cal_can_INS(node, max_dist, max_inspro, 0)
-        elif svtype == 'DEL':
-            candidates = cal_can_DEL(node, max_dist, max_inspro, 0, papa)
+        #if 10300 < head.start < 10900 and head.represent.type == 'INS':
+        #if 2053095 < head.start_down < 2054992:
+        if idx < 0:
+            print('===HERE IS A NODE===')
+            for x in head.variant_dict:
+                for r in head.variant_dict[x]:
+                    print(r.to_string())
+            if head.represent.type == 'INS':
+                #candidates = cal_can(head.variant_dict, diff_ratio_merging_INS, 1)
+                candidates = cal_can_INS(head.variant_dict, max_dist, max_inspro, 1)
+            elif head.represent.type == 'DEL':
+                #andidates = cal_can(head.variant_dict, diff_ratio_merging_DEL, 1)
+                candidates = cal_can_DEL(head.variant_dict, max_dist, max_inspro, 1)
+        '''
+        if head.represent.type == 'INS':
+            #candidates = cal_can(head.variant_dict, diff_ratio_merging_INS, 0)
+            candidates = cal_can_greedy(head.variant_dict, max_dist, max_inspro, 0)
+        elif head.represent.type == 'DEL':
+            #candidates = cal_can(head.variant_dict, diff_ratio_merging_DEL, 0)
+            candidates = cal_can_greedy(head.variant_dict, max_dist, max_inspro, 0)
         else:
-            candidates = cal_can_OTHER(node, max_dist, max_inspro, 0)
+            candidates = [[]]
+            for id in head.variant_dict:
+                candidates[0].append(head.variant_dict[id][0])
+                if len(head.variant_dict[id]) > 1:
+                    print(head.to_string())
+                    print('wrong merge on INV DUP BND')
+        '''
+        #candidates = cal_can_greedy(head.variant_dict, max_dist, max_inspro, 0)
+        if head.represent.type == 'INS':
+            candidates = cal_can_INS(head.variant_dict, max_dist, max_inspro, 0)
+        elif head.represent.type == 'DEL':
+            candidates = cal_can_DEL(head.variant_dict, max_dist, max_inspro, 0)
+        else:
+            candidates = cal_can_OTHER(head.variant_dict, max_dist, max_inspro, 0)
         for candidate in candidates: # candidate -> list(Record)
             if len(candidate) < support:
                 continue
@@ -461,12 +319,10 @@ def ll_solve_chrom(vcf_files, chrom, max_dist, max_inspro, anno, support, diff_r
             for can in candidate:
                 candidate_dict[can.source] = can
             result.append([candidate_record.chrom1, candidate_record.start, candidate_record, cipos, ciend, candidate_dict, annotation])
-    #print('finish %s-%s in %s, total %dnodes'%(chrom, svtype, str(time.time() - start_time), len(result)))
+        head = head.next
+    #print('finish %s in %s, total %dnodes'%(chrom, str(time.time() - start_time), len(result)))
     #print('finish %s at %s'%(chrom, str(time.time())))
     return result  # [[CHROM, POS, CANDIDATE_RECORD, CIPOS, CIEND, DICT, ANNOTATION], [], ...]
-
-def run_solve(args):
-    return ll_solve_chrom(*args)
 
 def ll_solve_chrom2(para):
     chrom = para[1]
@@ -535,7 +391,7 @@ def main_ctrl(args):
     start_time = time.time()
     max_dist = args.max_dist
     max_inspro = args.max_inspro
-    filenames = index_vcf(args.input, args.threads, args.work_dir + 'index/')
+    filenames = index_vcf(args.input, args.threads, args.work_dir)
     annotation_dict = parse_annotation_file(args.annotation)
     sample_ids, contiginfo = resolve_contigs(filenames, args.IOthreads)
     print('%d samples find'%(len(sample_ids)))
@@ -558,12 +414,10 @@ def main(args):
     max_inspro = args.max_inspro
     chr_dict, sample_ids, contiginfo, order = parse_vcfs(args.input, args.IOthreads)
     annotation_dict = parse_annotation_file(args.annotation)
+    pool = Pool(processes = args.threads)
     result = list()
     #print('finish parsing in %s'%(str(time.time() - start_time)))
-    file = open(args.output, 'w')
-    generate_header(file, contiginfo, sample_ids)
-    file.close()
-    start_merge = time.time()
+    start_time = time.time()
     if args.threads == 1:
         #for chr in chr_dict:
         for chr_o in order:
@@ -572,21 +426,8 @@ def main(args):
                 anno = annotation_dict[chr]
             else:
                 anno = []
-            for svtype in chr_dict[chr]:
-                result.append(ll_solve_chrom([chr_dict[chr][svtype], chr, max_dist, max_inspro, anno, args.support, args.diff_ratio_merging_INS, args.diff_ratio_merging_DEL, svtype, len(sample_ids), [args.i, args.j, args.k, args.l, args.ii]]))
-        semi_result = list()
-        for res in result:
-            try:
-                semi_result += res
-                #semi_result += res.get()[0]
-            except:
-                pass
-        print('semi_result length=%d'%(len(semi_result)))
-        semi_result = sorted(semi_result, key = lambda x:(x[0], int(x[1])))
-        output_result(semi_result, len(sample_ids), args.output)
+            result.append(ll_solve_chrom([chr_dict[chr], chr, max_dist, max_inspro, anno, args.support, args.diff_ratio_merging_INS, args.diff_ratio_merging_DEL]))
     else:
-        pool = Pool(processes = args.threads)
-        os.system('mkdir temporary')
         para = []
         #for chr in chr_dict:
         for chr_o in order:
@@ -595,23 +436,30 @@ def main(args):
                 anno = annotation_dict[chr]
             else:
                 anno = []
-            for svtype in chr_dict[chr]:
-                para.append([chr_dict[chr][svtype], chr, max_dist, max_inspro, anno, args.support, args.diff_ratio_merging_INS, args.diff_ratio_merging_DEL, svtype, len(sample_ids), [args.i, args.j, args.k, args.l, args.ii]])
-                #para = [(chr_dict[chr][svtype], chr, max_dist, max_inspro, anno, args.support, args.diff_ratio_merging_INS, args.diff_ratio_merging_DEL, svtype, len(sample_ids), [args.i, args.j, args.k, args.l, args.ii])]
-                #result.append(pool.map_async(run_solve, para))
-        #print('before pool map ' + str(time.time()))
-        result = pool.map(ll_solve_chrom_map, para)
-        #print('after pool map ' + str(time.time()))
-        #print('before pool close ' + str(time.time()))
-        pool.close()
-        #print('before pool join ' + str(time.time()))
-        pool.join()
-        #print('after pool join ' + str(time.time()))
-        #print('finish merging in %s'%(str(time.time() - start_merge)))
-        os.system('cat temporary/* > temporary/vcf')
-        os.system('sort -k 1,1 -k 2,2n temporary/vcf >> ' + args.output)
-        #os.system('rm -r ' + args.work_dir + 'index/')
-        os.system('rm -r temporary')
+            para.append([chr_dict[chr], chr, max_dist, max_inspro, anno, args.support, args.diff_ratio_merging_INS, args.diff_ratio_merging_DEL])
+        result = pool.map(ll_solve_chrom, para)
+
+    pool.close()
+    pool.join()
+    #print('finish merging in %s'%(str(time.time() - start_time)))
+    semi_result = list()
+    for res in result:
+        try:
+            semi_result += res
+            # semi_result += res.get()[0]
+        except:
+            pass
+    #print('semi_result length=%d'%(len(semi_result)))
+    start_sort_time = time.time()
+    semi_result = sorted(semi_result, key = lambda x:(x[0], int(x[1])))
+    #print('finish sort in %s'%(str(time.time() - start_sort_time)))
+
+    file = open(args.output, 'w')
+    generate_header(file, contiginfo, sample_ids)
+    file.close()
+    output_result(semi_result, sample_ids, args.output)
+    #os.system('rm -r ' + args.work_dir + 'index/')
+
     #print('finish in ' + str(time.time() - start_time) + 'seconds')
 
 
@@ -672,31 +520,14 @@ if __name__ == '__main__':
     parser.add_argument('--length_bias',
             action="store_true",
             default = False)
-    parser.add_argument('--tiaocan',
-            action="store_true",
-            default = False)
-    parser.add_argument('-i',
-            type = float,
-            default = 0.3)
-    parser.add_argument('-j',
-            type = float,
-            default = 0.3)
-    parser.add_argument('-k',
-            type = float,
-            default = 0.3)
-    parser.add_argument('-l',
-            type = float,
-            default = 0.3)
-    parser.add_argument('-ii',
+    parser.add_argument('-b', '--batches',
             type = int,
-            default = 0)
-    
+            default = 10000000,
+            help = 'Batch of genome segmentation interval[%(default)s]')
     
     args = parser.parse_args(sys.argv[1:])
-    if args.seperate_chrom:
-        main_ctrl(args)
-    else:
-        main(args)
+    main_ctrl(args)
+
     # /usr/bin/time -v python src/cuteSV_merge.py input/file_SRR.fofn sample_merged25.vcf ./ -t 16 -a hg19.refGene.gtf
     # /usr/bin/time -v python src/cuteSV_merge.py test.info test_merged.vcf ./ -t 16 -a hg19.refGene.gtf
     # /usr/bin/time -v python src/cuteSV_merge.py input/cutesv.fofn merged_cutesv.vcf ./ -t 16

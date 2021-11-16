@@ -1,36 +1,3 @@
-:<<!
-for i in {CHM1,CHM13,HG00268,HG00514,HG00733,HG01352,HG02059,HG02106,HG02818,HG04217,HX1,NA12878,NA19240,NA19434}
-do
-	/data/0/sqcao/tools/SURVIVOR/Debug/SURVIVOR merge input/$i.fofn 1000 2 1 0 1 30 output_sample/survivor_s2_$i.vcf
-	/data/0/sqcao/tools/SURVIVOR/Debug/SURVIVOR merge input/$i.fofn 1000 3 1 0 1 30 output_sample/survivor_s3_$i.vcf
-done
-ls output_sample/survivor_s2_* > input/sur_s2_samples.fofn
-ls output_sample/survivor_s3_* > input/sur_s3_samples.fofn
-/data/0/sqcao/tools/SURVIVOR/Debug/SURVIVOR merge input/sur_s2_samples.fofn 1000 1 1 0 1 30 output419/survivor_s2_sample.vcf
-/data/0/sqcao/tools/SURVIVOR/Debug/SURVIVOR merge input/sur_s3_samples.fofn 1000 1 1 0 1 30 output419/survivor_s3_sample.vcf
-
-grep -v '#' output419/survivor_s2_sample.vcf | sort -k 1,1 -k 2,2n > body
-grep '#' output419/survivor_s2_sample.vcf > head
-cat head body > output419/survivor_s2_sample.vcf
-grep -v '#' output419/survivor_s3_sample.vcf | sort -k 1,1 -k 2,2n > body
-grep '#' output419/survivor_s3_sample.vcf > head
-cat head body > output419/survivor_s3_sample.vcf
-rm head body
-rm -r benchmark/tru_sur_s2 benchmark/tru_sur_s3
-echo 'support == 2'
-#python src/eval.py benchmark/cmp_sur_s2 chr1_merge.vcf output419/survivor_s2_sample.vcf
-bgzip -c output419/survivor_s2_sample.vcf > output419/survivor_s2_sample.vcf.gz
-tabix output419/survivor_s2_sample.vcf.gz
-truvari bench -b benchmark/nstd_merge.vcf.gz -c output419/survivor_s2_sample.vcf.gz -o benchmark/tru_sur_s2 -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-python src/parse_truvari.py benchmark/tru_sur_s2
-echo 'support == 3'
-#python src/eval.py benchmark/cmp_sur_s2 chr1_merge.vcf output419/survivor_s3_sample.vcf
-bgzip -c output419/survivor_s3_sample.vcf > output419/survivor_s3_sample.vcf.gz
-tabix output419/survivor_s3_sample.vcf.gz
-truvari bench -b benchmark/nstd_merge.vcf.gz -c output419/survivor_s3_sample.vcf.gz -o benchmark/tru_sur_s3 -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-python src/parse_truvari.py benchmark/tru_sur_s3
-echo 'run sur sample finished'
-!
 sortandindex() {
 	grep -v '#' $1 | sort -k 1,1 -k 2,2n > body
 	grep '#' $1 > head
@@ -39,41 +6,72 @@ sortandindex() {
 	bgzip -c $1 > $1.gz
 	tabix $1.gz
 }
+# extract different svtype from $1 and generate INS/DEL/INV/DUP.vcf.gz
+parse_svtype() {
+	for svtype in {INS,DEL,INV,DUP}
+	do
+		grep '#' $1 > head
+		grep SVTYPE=$svtype $1 > body
+		cat head body > $svtype.vcf
+		rm head body
+		bgzip -c $svtype.vcf > $svtype.vcf.gz
+		tabix $svtype.vcf.gz
+	done
+}
 
 run_sur() {
 	# run_sur support coverage
 	for i in {CHM1,CHM13,HG00268,HG00514,HG00733,HG01352,HG02059,HG02106,HG02818,HG04217,HX1,NA12878,NA19240,NA19434}
 	do
-		echo $i
-		/data/0/sqcao/tools/SURVIVOR/Debug/SURVIVOR merge input/$2/$i.fofn 1000 $1 1 0 1 30 output_sample/survivor_$i\_$2.vcf
+		#echo $i
+		/data/0/sqcao/tools/SURVIVOR/Debug/SURVIVOR merge input/$2/$i.fofn 100 $1 1 0 1 30 benchmark/survivor_vcf/$i\_$2.vcf
+		grep -v '#' benchmark/survivor_vcf/$i\_$2.vcf | sort -k 1,1 -k 2,2n > body
+		grep '#' benchmark/survivor_vcf/$i\_$2.vcf > head
+		cat head body > benchmark/survivor_vcf/$i\_$2.vcf
+		rm head body
 	done
-	ls output_sample/survivor_*_$2.vcf > input/sur_samples_$2.fofn
-	wc -l input/sur_samples_$2.fofn
+	ls benchmark/survivor_vcf/*_$2.vcf > benchmark/survivor_vcf/$2.fofn
 
-	/data/0/sqcao/tools/SURVIVOR/Debug/SURVIVOR merge input/sur_samples_$2.fofn 1000 1 1 0 1 30 output74/survivor_samples_$2.vcf
-	sortandindex output74/survivor_samples_$2.vcf
+	/data/0/sqcao/tools/SURVIVOR/Debug/SURVIVOR merge benchmark/survivor_vcf/$2.fofn 100 1 1 0 1 30 benchmark/survivor_vcf/sur_$2.vcf
+	sortandindex benchmark/survivor_vcf/sur_$2.vcf
 }
 
-compress_coverage() {
+main() {
 	# compress_coverage folder
-:<<!
 	for i in {5x,10x,15x,20x,30x}
 	do
 		run_sur 3 $i
 	done
 	echo 'finish merge'
-!
-	rm -r cmp_5x/ cmp_10x/ cmp_15x/ cmp_20x/ cmp_30x/
-	truvari bench -b benchmark/nstd_merge.vcf.gz -c $1/survivor_samples_5x.vcf.gz -o cmp_5x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-	truvari bench -b benchmark/nstd_merge.vcf.gz -c $1/survivor_samples_10x.vcf.gz -o cmp_10x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-	truvari bench -b benchmark/nstd_merge.vcf.gz -c $1/survivor_samples_15x.vcf.gz -o cmp_15x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-	truvari bench -b benchmark/nstd_merge.vcf.gz -c $1/survivor_samples_20x.vcf.gz -o cmp_20x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-	truvari bench -b benchmark/nstd_merge.vcf.gz -c $1/survivor_samples_30x.vcf.gz -o cmp_30x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
-	python truvari/ss.py cmp_5x/summary.txt cmp_10x/summary.txt cmp_15x/summary.txt cmp_20x/summary.txt cmp_30x/summary.txt answer.txt
-	echo 'write to answer'
-}
 
-compress_coverage output419
-#run_sur 3 10x
-#rm cmp_sur
-#truvari bench -b benchmark/nstd_merge.vcf.gz -c output419/survivor_samples_10x.vcf.gz -o cmp_sur -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	# coverage
+	rm -r cmp_5x/ cmp_10x/ cmp_15x/ cmp_20x/ cmp_30x/
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_5x.vcf.gz -o cmp_5x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_10x.vcf.gz -o cmp_10x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_15x.vcf.gz -o cmp_15x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_20x.vcf.gz -o cmp_20x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_30x -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	# type
+	parse_svtype benchmark/survivor_vcf/sur_30x.vcf
+	rm -r cmp_ins/ cmp_del/ cmp_inv/ cmp_dup/
+	truvari bench -b benchmark/nstd_INS.vcf.gz -c INS.vcf.gz -o cmp_ins -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	truvari bench -b benchmark/nstd_DEL.vcf.gz -c DEL.vcf.gz -o cmp_del -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	truvari bench -b benchmark/nstd_INV.vcf.gz -c INV.vcf.gz -o cmp_inv -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	truvari bench -b benchmark/nstd_DUP.vcf.gz -c DUP.vcf.gz -o cmp_dup -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	#truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_all -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	# length
+	rm -r cmp_1/ cmp_2/ cmp_3/ cmp_4/ cmp_5/ cmp_6/
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_1 -p 0 -r 1000 -s 30 --sizemax 99 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_2 -p 0 -r 1000 -s 100 --sizemax 499 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_3 -p 0 -r 1000 -s 500 --sizemax 999 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_4 -p 0 -r 1000 -s 1000 --sizemax 4999 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_5 -p 0 -r 1000 -s 5000 --sizemax 9999 --multimatch
+	truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_6 -p 0 -r 1000 -s 10000 --sizemax 10000000 --multimatch
+	#truvari bench -b benchmark/nstd_merge.vcf.gz -c benchmark/survivor_vcf/sur_30x.vcf.gz -o cmp_7 -p 0 -r 1000 -s 30 --sizemax 10000000 --multimatch
+	python truvari/ss.py cmp_5x/summary.txt cmp_10x/summary.txt cmp_15x/summary.txt cmp_20x/summary.txt cmp_30x/summary.txt \
+					cmp_ins/summary.txt cmp_del/summary.txt cmp_inv/summary.txt cmp_dup/summary.txt \
+					cmp_1/summary.txt cmp_2/summary.txt cmp_3/summary.txt cmp_4/summary.txt cmp_5/summary.txt cmp_6/summary.txt benchmark/survivor_vcf/answer.txt
+	
+}
+rm benchmark/survivor_vcf/*
+main

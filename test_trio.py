@@ -1,5 +1,6 @@
 from pysam import VariantFile
 import sys
+lst = [90272, 139408, 533483, 1219553, 1224402, 2054692, 2256563, 2583572, 2594415, 2596458, 2604982, 2613655, 2623286, 2634216, 2684816, 2954350, 3344757, 3393869, 3393869, 3561912, 7580282, 9684000, 17124911, 18376200, 19386826, 19387909, 19387914, 23603557, 26534275, 28399624, 29691912, 31904977, 35267851, 36124478, 36679545, 38405305, 39677664, 40130171, 45688745, 46537404]
 
 #gt: record.samples[i]['GT'] (tuple)
 def parse_gt(gt):
@@ -11,6 +12,15 @@ def parse_gt(gt):
         return 1
     if gt[0] + gt[1] == 2:
         return 2
+
+# gt:  1/1:A:ACGGGTGCC
+def parse_gt_inline(gt):
+    cnt = 0
+    if gt[0] == '1':
+        cnt += 1
+    if gt[2] == '1':
+        cnt += 1
+    return cnt
 
 # False -> inconsistency
 def check(son, fa, ma):
@@ -61,5 +71,58 @@ def main(vcf_file, output_file):
     print(cnt / tot)
     return cnt, tot
 
+def main_indel(vcf_file, output_file, out):
+    vcf_reader = VariantFile(vcf_file, 'r')
+    output = open(output_file, 'w')
+    testtxt = open(out, 'a')
+    '''
+    sample1 = vcf_reader.header.samples[0]
+    sample2 = vcf_reader.header.samples[1]
+    sample3 = vcf_reader.header.samples[2]
+    '''
+    cnt = dict()
+    tot = dict()
+    with open(vcf_file, 'r') as f:
+        for line in f:
+            if line[0] == '#':
+                continue
+            seq = line.strip().split('\t')
+            son = parse_gt_inline(seq[-3])
+            father = parse_gt_inline(seq[-2])
+            mother = parse_gt_inline(seq[-1])
+            svtype = line.split('SVTYPE=')[1].split(';')[0]
+            if svtype not in tot:
+                tot[svtype] = 0
+            tot[svtype] += 1
+            res = check(son, father, mother)
+            if res == False:
+                if svtype not in cnt:
+                    cnt[svtype] = 0
+                cnt[svtype] += 1
+                output.write('=====')
+            output.write(line)
+    #print(cnt)
+    #print(tot)
+    ccnt = 0
+    ttot = 0
+    for svtype in ['INS', 'DEL', 'INV', 'DUP', 'BND']:
+        if svtype == 'BND' and 'BND' not in cnt:
+            svtype = 'TRA'
+        print('%s %f'%(svtype, cnt[svtype] / tot[svtype]))
+        #testtxt.write('%f,'%(cnt[svtype] / tot[svtype]))
+        ccnt += cnt[svtype]
+        ttot += tot[svtype]
+    testtxt.write('%f,'%(cnt['INV'] / tot['INV']))
+    #print(ccnt)
+    #print(ttot)
+    #print(ccnt / ttot)
+    if ttot == 0:
+        rat = -1
+    else:
+        rat = ccnt/ttot
+    testtxt.write('%d,%d,%f,'%(ccnt, ttot, rat))
+    testtxt.close()
+
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2])
+    #main(sys.argv[1], sys.argv[2])
+    main_indel(sys.argv[1], sys.argv[2], sys.argv[3])

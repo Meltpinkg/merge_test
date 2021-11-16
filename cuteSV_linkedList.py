@@ -9,15 +9,19 @@ class Record(object):
                 self.type = 'INS'
             elif 'DEL' in record.alts[0]:
                 self.type = 'DEL'
-        if ('INS' in self.type or 'DEL' in self.type) and 'SVLEN' in record.info:
-            self.end = abs(parse_to_int(record.info['SVLEN']))
-        elif 'END' in record.info:
+        #if ('INS' in self.type or 'DEL' in self.type) and 'SVLEN' in record.info:
+        if self.type == 'BND' and 'END' in record.info:
             self.end = parse_to_int(record.info['END'])
-        else:
-            try:
-                self.end = parse_to_int(record.stop)
-            except:
-                self.end = 0
+        if self.type != 'BND':
+            if 'SVLEN' in record.info:
+                self.end = abs(parse_to_int(record.info['SVLEN']))
+            else:
+                print(record)
+                print('parse end ERROR')
+                try:
+                    self.end = parse_to_int(record.stop)
+                except:
+                    self.end = 0
         if self.type == 'BND':
             if 'CHR2' in record.info:
                 chrom2 = record.info['CHR2']
@@ -88,24 +92,53 @@ class Record(object):
                 self.gt = str(record.samples[0]['GT'][0]) + '/' + str(record.samples[0]['GT'][1])
         else:
             self.gt = './.'
+        #if self.type == 'DEL':
+        #    self.end = self.start + self.end
 
     def to_string(self):
-        return self.name + ', ' + self.type + ', start: ' + str(self.start) + ', end: ' + str(self.end) + ', strand: ' + self.strand
+        return self.name + ', ' + self.type + ', start: ' + str(self.start) + ', end: ' + str(self.end) + ', strand: ' + self.strand + ', gt: ' + self.gt + ', source: ' + str(self.source)
 
+    def __eq__(self, other):
+        if isinstance(other, Record):
+            #if self.chrom == other.chrom and self.start == other.start and self.end == other.end and self.chrom2 == other.chrom2:
+            if self.start == other.start and self.end == other.end:
+                return True
+            else:
+                return False
+        else:
+            raise Exception("The type of object is not Record")
+    def __lt__(self, other):
+        if isinstance(other, Record):
+            if self.start < other.start or (self.start == other.start and self.end < other.end):
+                return True
+            else:
+                return False
+        else:
+            raise Exception("The type of object is not Record")
+    def __gt__(self, other):
+        if isinstance(other, Record):
+            if self.start > other.start or (self.start == other.start and self.end > other.end):
+                return True
+            else:
+                return False
+        else:
+            raise Exception("The type of object is not Record")
 
 class ListNode(object):
     def __init__(self, id, record, pre=None, next=None):
         if record == None:
             self.variant_dict = dict()  # {id -> Record}
             self.represent = None
-            self.start = 0
+            self.start_down = 0
+            self.start_up = 0
             self.end = 0
             self.cnt = 0
         else:
             self.variant_dict = dict()
             self.variant_dict[id] = [record]
             self.represent = record
-            self.start = record.start
+            self.start_down = record.start
+            self.start_up = record.start
             self.end = record.end
             self.cnt = 1
         self.pre = pre
@@ -114,7 +147,9 @@ class ListNode(object):
         if id not in self.variant_dict:
             self.variant_dict[id] = list()
         self.variant_dict[id].append(record)
-        self.start = (self.start * self.cnt + record.start) / (self.cnt + 1)
+        #self.start = (self.start * self.cnt + record.start) / (self.cnt + 1)
+        self.start_down = min(self.start_down, record.start)
+        self.start_up = max(self.start_up, record.start)
         self.end = (self.end * self.cnt + record.end) / (self.cnt + 1)
         self.cnt += 1
         # self.variant_dict[id] = record
@@ -142,29 +177,6 @@ def parse_to_int(sth):
         return sth
 
 '''
-    cur, input -> Record
-    max_dist [default = 1000]
-    return True / False
-'''
-def check_is_same(cur, input, max_dist, max_inspro, cur_type):
-    #if input.type == cur.type and input.strand == cur.strand:
-    '''if 1074800 < input.start < 1075400 and input.type == 'DEL':
-        print('check')
-        print(cur.to_string())
-        print(input.to_string())'''
-    if input.type == cur_type:
-        if abs(input.start - cur.start) < max_dist:
-            if input.type == 'INS' or input.type == 'DEL':
-                if max_inspro < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
-                    return True
-            else:
-                if abs(input.end - cur.end) < max_dist:
-                    return True
-    '''if 1074800 < input.start < 1075400 and input.type == 'DEL':
-        print('False')'''
-    return False
-
-'''
     head -> ListNode
     record -> Record
     向head后某处插入node(record)
@@ -190,6 +202,41 @@ def insert_node(head, id, record):
     return node
 
 '''
+    cur -> ListNode
+    input -> Record
+    max_dist [default = 1000]
+    return True / False
+'''
+def check_is_same_origin(cur, input, max_dist, max_inspro, cur_type):
+    #if input.type == cur.type and input.strand == cur.strand:
+    ratio = 1.6
+    if input.type == cur_type:
+        if abs(input.start - cur.start_down) < max_dist * ratio or abs(input.start - cur.start_up) < max_dist * ratio:
+            if input.type == 'INS' or input.type == 'DEL':
+                #if max_inspro < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
+                    #return True
+                #if abs(input.end - cur.end) < max_dist * ratio:
+                return True
+            else:
+                if abs(input.end - cur.end) < max_dist * ratio:
+                    return True
+    return False                
+
+# 只看start
+def check_is_same(cur, input, max_dist, max_inspro, cur_type):
+    #if input.type == cur.type and input.strand == cur.strand:
+    ratio = 1.6
+    if input.type == cur_type:
+        if abs(input.start - cur.start_down) < max_dist * ratio or abs(input.start - cur.start_up) < max_dist * ratio:
+            if input.type == 'BND':
+                if cur.represent.chrom2 == input.chrom2:
+                    return True
+            else:
+                return True
+    return False                
+
+
+'''
     head -> ListNode 插入的起始节点
     id -> sample_id
     record -> Record
@@ -203,19 +250,19 @@ def add_node(head, id, record, max_dist, max_inspro):
         return node
     cur = head
     while cur != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro, cur.represent.type) and id not in cur.variant_dict:
+        if check_is_same(cur, record, max_dist, max_inspro, cur.represent.type) and id not in cur.variant_dict:
             cur.add(id, record)
             return cur
-        if cur.represent.start - record.start > 2 * max_dist:  # cannot merge
+        if cur.start_down - record.start > 2 * max_dist:  # cannot merge
             break
         cur = cur.next
         #print('next')
     cur = head.pre
     while cur.represent != None:
-        if check_is_same(cur.represent, record, max_dist, max_inspro, cur.represent.type) and id not in cur.variant_dict:
+        if check_is_same(cur, record, max_dist, max_inspro, cur.represent.type) and id not in cur.variant_dict:
             cur.add(id, record)
             return cur
-        if record.start - cur.represent.start > 2 * max_dist:
+        if record.start - cur.start_up > 2 * max_dist:
             break
         cur = cur.pre
         #print('pre')
@@ -233,7 +280,7 @@ def add_node_indel(head, id, record, max_dist, max_inspro):
         if check_is_same(cur, record, max_dist, max_inspro, cur.represent.type):
             cur.add(id, record)
             return cur
-        if cur.start - record.start > 2 * max_dist:  # cannot merge
+        if cur.start_down - record.start > 2 * max_dist:  # cannot merge
             break
         cur = cur.next
         #print('next')
@@ -242,7 +289,7 @@ def add_node_indel(head, id, record, max_dist, max_inspro):
         if check_is_same(cur, record, max_dist, max_inspro, cur.represent.type):
             cur.add(id, record)
             return cur
-        if record.start - cur.start > 2 * max_dist:
+        if record.start - cur.start_up > 2 * max_dist:
             break
         cur = cur.pre
         #print('pre')
@@ -292,4 +339,31 @@ if max(input.end, cur.end) <= 300:
 if max(input.end, cur.end) <= 1000:
     if 0.6 < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
         return True
+'''
+
+'''
+    cur, input -> Record
+    max_dist [default = 1000]
+    return True / False
+def check_is_same(cur, input, max_dist, max_inspro, cur_type):
+    #if input.type == cur.type and input.strand == cur.strand:
+    if 1074800 < input.start < 1075400 and input.type == 'DEL':
+        print('check')
+        print(cur.to_string())
+        print(input.to_string())
+    if input.type == cur_type:
+        if abs(input.start - cur.start) < max_dist * 1.6 and abs(input.end - cur.end) < max_dist:
+            if input.type == 'INS' or input.type == 'DEL':
+                #if max_inspro < min(input.end, cur.end) / max(input.end, cur.end) <= 1.0:
+                    #return True
+                #if abs(input.end - cur.end) < max_dist:
+                return True
+            else:
+                if abs(input.end - cur.end) < max_dist:
+                    return True
+    if 1074800 < input.start < 1075400 and input.type == 'DEL':
+        print('False')
+    if input.type == cur_type:
+        if abs(input.start - cur.start) < max_dist * 1.6
+    return False
 '''
